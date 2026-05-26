@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  build-windows:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_PLATFORM: windows
+    volumes:
+      - ./dist:/app/dist
+    environment:
+      - TAURI_SKIP_DEPS_CHECK=true
+      - BUILD_PLATFORM=windows
+
+  build-linux:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_PLATFORM: linux
+    volumes:
+      - ./dist:/app/dist
+    environment:
+      - TAURI_SKIP_DEPS_CHECK=true
+      - BUILD_PLATFORM=linux
+
+  build-macos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_PLATFORM: macos
+    volumes:
+      - ./dist:/app/dist
+    environment:
+      - TAURI_SKIP_DEPS_CHECK=true
+      - BUILD_PLATFORM=macos
