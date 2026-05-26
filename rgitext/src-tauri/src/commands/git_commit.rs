@@ -5,7 +5,7 @@ pub fn get_commit_log(repo_path: String, limit: u32, git_path: Option<String>) -
     let output = run_git_command(&[
         "log",
         "--graph",
-        "--pretty=format:RGITEXT_SEP%H│%an│%ae│%at│%s",
+        "--pretty=format:RGITEXT_SEP%H│%an│%ae│%at│%s│%d",
         "-n",
         &limit.to_string(),
     ], Some(&repo_path), git_path.as_deref())?;
@@ -34,6 +34,17 @@ pub fn get_commit_log(repo_path: String, limit: u32, git_path: Option<String>) -
                 let email = parts[2].to_string();
                 let date = parts[3].parse::<u64>().unwrap_or(0);
                 let subject = parts[4].to_string();
+                let refs = if parts.len() >= 6 && !parts[5].trim().is_empty() {
+                    let raw = parts[5].trim();
+                    // Strip surrounding parentheses: " (HEAD -> main, origin/main)"
+                    let inner = raw.trim_start_matches('(').trim_end_matches(')');
+                    inner.split(',')
+                        .map(|r| r.trim().to_string())
+                        .filter(|r| !r.is_empty())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
                 commits.push(CommitItem {
                     graph: graph_part,
@@ -42,6 +53,7 @@ pub fn get_commit_log(repo_path: String, limit: u32, git_path: Option<String>) -
                     email,
                     date,
                     subject,
+                    refs,
                 });
             }
         } else {
@@ -52,6 +64,7 @@ pub fn get_commit_log(repo_path: String, limit: u32, git_path: Option<String>) -
                 email: String::new(),
                 date: 0,
                 subject: String::new(),
+                refs: Vec::new(),
             });
         }
     }

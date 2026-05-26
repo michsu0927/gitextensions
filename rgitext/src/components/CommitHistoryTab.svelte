@@ -10,7 +10,41 @@
   export let isLoadingCommitFileDiff = false;
   export let commitFilesError = '';
 
-  // callbacks are orchestrated reactively in App.svelte
+  // callbacks
+  export let performResetBranch;
+
+  // Context menu state
+  let contextMenuCommit = null;
+  let contextMenuX = 0;
+  let contextMenuY = 0;
+
+  function handleContextMenu(e, commit) {
+    if (!commit.hash) return;
+    contextMenuCommit = commit;
+    contextMenuX = e.clientX;
+    contextMenuY = e.clientY;
+  }
+
+  function closeContextMenu() {
+    contextMenuCommit = null;
+  }
+
+  function handleResetToCommit() {
+    if (!contextMenuCommit) return;
+    const hash = contextMenuCommit.hash;
+    closeContextMenu();
+    const mode = prompt(`Reset current branch to ${hash.substring(0, 7)}?\n\nEnter mode: 'hard', 'mixed', or 'soft':`, "mixed");
+    if (mode && ['hard', 'mixed', 'soft'].includes(mode.toLowerCase().trim())) {
+      performResetBranch(hash, mode.toLowerCase().trim());
+    } else if (mode) {
+      alert("Invalid mode! Please enter 'hard', 'mixed', or 'soft'.");
+    }
+  }
+
+  function selectCommit(commit) {
+    if (!commit.hash || selectedCommit?.hash === commit.hash) return;
+    selectedCommit = commit;
+  }
 
   // Copy diff tooltip state
   let copyDiffTooltip = '';
@@ -177,7 +211,7 @@
           </thead>
           <tbody>
             {#each commits as commit}
-              <tr class="commit-row {selectedCommit?.hash === commit.hash ? 'selected' : ''} {!commit.hash ? 'pure-graph-row' : ''}" on:click={() => commit.hash && (selectedCommit = commit)}>
+              <tr class="commit-row {selectedCommit?.hash === commit.hash ? 'selected' : ''} {!commit.hash ? 'pure-graph-row' : ''}" on:click={() => selectCommit(commit)} on:contextmenu|preventDefault={(e) => handleContextMenu(e, commit)}>
                 <td class="col-graph monospaced">
                   {@html highlightGraph(commit.graph)}
                 </td>
@@ -185,6 +219,11 @@
                   {commit.hash ? commit.hash.substring(0, 7) : ''}
                 </td>
                 <td class="col-subject">
+                  {#if commit.refs && commit.refs.length > 0}
+                    {#each commit.refs as ref}
+                      <span class="ref-label {ref.startsWith('HEAD') ? 'ref-head' : ref.includes('/') ? 'ref-remote' : 'ref-local'}">{ref.replace('HEAD -> ', '')}</span>
+                    {/each}
+                  {/if}
                   <span class="subject-text">{commit.subject || ''}</span>
                 </td>
                 <td class="col-author">
@@ -200,6 +239,19 @@
       </div>
     {/if}
   </div>
+
+  <!-- Context Menu -->
+  {#if contextMenuCommit}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="context-menu-overlay" on:click={closeContextMenu}></div>
+    <div class="context-menu shadow-premium" style="left: {contextMenuX}px; top: {contextMenuY}px;">
+      <div class="context-menu-header">Commit {contextMenuCommit.hash.substring(0, 7)}</div>
+      <button class="dropdown-item" on:click={handleResetToCommit}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0-.57-8.38l5.67-5.67"/></svg>
+        <span>Reset current branch to here...</span>
+      </button>
+    </div>
+  {/if}
 
   <!-- Commit Selection Drawer -->
   {#if selectedCommit}
@@ -307,5 +359,52 @@
   }
   .overflow-hidden {
     overflow: hidden;
+  }
+  .context-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999;
+  }
+  .context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg-secondary, #1e293b);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 8px;
+    padding: 4px 0;
+    min-width: 240px;
+  }
+  .context-menu-header {
+    padding: 6px 14px;
+    font-size: 0.75rem;
+    color: var(--text-muted, #94a3b8);
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--border-color, #334155);
+    margin-bottom: 2px;
+  }
+  .ref-label {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-right: 4px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .ref-head {
+    background: #f97316;
+    color: #fff;
+  }
+  .ref-local {
+    background: #3b82f6;
+    color: #fff;
+  }
+  .ref-remote {
+    background: #10b981;
+    color: #fff;
   }
 </style>

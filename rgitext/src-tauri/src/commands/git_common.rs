@@ -87,6 +87,7 @@ pub struct CommitItem {
     pub email: String,
     pub date: u64,
     pub subject: String,
+    pub refs: Vec<String>,
 }
 
 #[derive(serde::Serialize)]

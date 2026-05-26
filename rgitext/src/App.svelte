@@ -224,8 +224,11 @@
   let isCommitting = false;
   let commitFeedback = '';
   let commitFeedbackError = '';
+  let lastLoadedCommitHash = '';
 
   async function loadCommitFiles(hash) {
+    if (hash === lastLoadedCommitHash) return;
+    lastLoadedCommitHash = hash;
     isLoadingCommitFiles = true;
     commitFilesError = '';
     selectedCommitFile = '';
@@ -343,6 +346,7 @@
   $: if (selectedCommit && selectedCommit.hash) {
     loadCommitFiles(selectedCommit.hash);
   } else {
+    lastLoadedCommitHash = '';
     commitFiles = [];
     selectedCommitFile = '';
     selectedCommitFileDiff = '';
@@ -1126,6 +1130,7 @@
           bind:selectedCommitFileDiff 
           {isLoadingCommitFileDiff} 
           {commitFilesError} 
+          {performResetBranch}
         />
       {:else if activeTab === 'branches'}
         <BranchesTab 
@@ -1154,7 +1159,6 @@
           {performMerge} 
           {performRebase}
           {performCreateBranch}
-          {performResetBranch}
           {performRenameBranch}
           {performDeleteBranch}
           {performPull}
