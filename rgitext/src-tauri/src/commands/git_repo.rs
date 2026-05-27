@@ -196,3 +196,11 @@ pub fn list_directory(repo_path: String, relative_dir: String) -> Result<Vec<Dir
 
     Ok(entries)
 }
+
+#[tauri::command]
+pub fn get_current_working_dir() -> Result<String, String> {
+    std::env::current_dir()
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to get current working directory: {}", e))
+}
+

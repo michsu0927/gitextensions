@@ -23,6 +23,7 @@ fn main() {
             commands::git_repo::select_directory,
             commands::git_repo::select_git_executable,
             commands::git_repo::list_directory,
+            commands::git_repo::get_current_working_dir,
             commands::git_commit::get_commit_log,
             commands::git_commit::get_commit_files,
             commands::git_commit::get_commit_file_diff,

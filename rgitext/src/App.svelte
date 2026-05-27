@@ -156,8 +156,8 @@
   let settingsError = '';
 
   // Active Repository path state
-  let currentRepoPath = 'e:\\gitextensions';
-  let tempRepoPath = 'e:\\gitextensions';
+  let currentRepoPath = '';
+  let tempRepoPath = '';
   let isEditingPath = false;
   let pathError = '';
 
@@ -1019,7 +1019,18 @@
       console.error("Failed to establish Tauri git log event listener:", err);
     }
 
-    // 2. Load initial states
+    // 2. Load and resolve current working directory dynamically
+    try {
+      const resolvedPath = await invoke('get_current_working_dir');
+      if (resolvedPath) {
+        currentRepoPath = resolvedPath;
+        tempRepoPath = resolvedPath;
+      }
+    } catch (err) {
+      console.error("Failed to resolve current working directory:", err);
+    }
+
+    // 3. Load initial states
     checkGit();
     loadGitStatus();
     loadBranches();
