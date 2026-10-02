@@ -2,53 +2,66 @@
 
 mod commands;
 
-use commands::git_common::APP_HANDLE;
+use std::sync::Arc;
+
+use git_core::{GitExecutor, LogSink};
+use tauri::{Emitter, Manager};
+
+use commands::AppState;
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     tauri::Builder::default()
         .setup(|app| {
+            // Every git invocation is mirrored to the frontend console drawer.
             let handle = app.handle().clone();
-            println!(">>> Tauri setup hook running: APP_HANDLE initialized.");
-            if let Err(_) = APP_HANDLE.set(handle) {
-                println!(">>> WARNING: APP_HANDLE was already set!");
-            }
+            let sink: LogSink = Arc::new(move |line: String| {
+                if let Err(e) = handle.emit("git-command-log", line) {
+                    tracing::warn!("failed to emit git-command-log: {}", e);
+                }
+            });
+            app.manage(AppState {
+                git: GitExecutor::new(Some(sink)),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::git_repo::greet,
-            commands::git_repo::get_git_version,
-            commands::git_repo::verify_git_repo,
-            commands::git_repo::get_git_status,
-            commands::git_repo::scan_for_repos,
-            commands::git_repo::select_directory,
-            commands::git_repo::select_git_executable,
-            commands::git_repo::list_directory,
-            commands::git_repo::get_current_working_dir,
-            commands::git_commit::get_commit_log,
-            commands::git_commit::get_commit_files,
-            commands::git_commit::get_commit_file_diff,
-            commands::git_commit::get_working_dir_files,
-            commands::git_commit::get_working_file_diff,
-            commands::git_commit::stage_files,
-            commands::git_commit::unstage_files,
-            commands::git_commit::commit_changes,
-            commands::git_branch::get_git_branches,
-            commands::git_branch::checkout_branch,
-            commands::git_branch::merge_branch,
-            commands::git_branch::rebase_branch,
-            commands::git_branch::create_branch,
-            commands::git_branch::reset_current_branch,
-            commands::git_branch::rename_branch,
-            commands::git_branch::delete_branch,
-            commands::git_branch::get_git_tags,
-            commands::git_branch::get_git_stashes,
-            commands::git_branch::get_git_remotes,
-            commands::git_branch::get_git_remote_branches,
-            commands::git_branch::checkout_remote_branch,
-            commands::git_branch::configure_and_fetch_remote,
-            commands::git_branch::apply_stash,
-            commands::git_branch::pull_changes,
-            commands::git_branch::push_changes
+            commands::system::greet,
+            commands::system::get_git_version,
+            commands::system::set_git_path,
+            commands::system::verify_git_repo,
+            commands::system::select_directory,
+            commands::system::select_git_executable,
+            commands::system::get_current_working_dir,
+            commands::repo::get_git_status,
+            commands::repo::scan_for_repos,
+            commands::repo::list_directory,
+            commands::history::get_commit_log,
+            commands::history::get_commit_files,
+            commands::history::get_commit_file_diff,
+            commands::workdir::get_working_dir_files,
+            commands::workdir::get_working_file_diff,
+            commands::workdir::stage_files,
+            commands::workdir::unstage_files,
+            commands::workdir::commit_changes,
+            commands::branch::get_git_branches,
+            commands::branch::checkout_branch,
+            commands::branch::merge_branch,
+            commands::branch::rebase_branch,
+            commands::branch::create_branch,
+            commands::branch::reset_current_branch,
+            commands::branch::rename_branch,
+            commands::branch::delete_branch,
+            commands::tag::get_git_tags,
+            commands::stash::get_git_stashes,
+            commands::stash::apply_stash,
+            commands::remote::get_git_remotes,
+            commands::remote::get_git_remote_branches,
+            commands::remote::checkout_remote_branch,
+            commands::remote::configure_and_fetch_remote,
+            commands::remote::pull_changes,
+            commands::remote::push_changes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

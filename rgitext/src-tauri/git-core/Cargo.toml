@@ -1,0 +1,14 @@
+[package]
+name = "git-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.35", features = ["process", "time", "io-util", "rt"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"

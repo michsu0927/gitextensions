@@ -89,6 +89,8 @@
     }
   }
 
+  const MAX_CONSOLE_LOGS = 200;
+
   async function invoke(cmd, args = {}) {
     const logId = Math.random().toString(36).substring(2, 9);
     const now = new Date();
@@ -105,10 +107,13 @@
       error: null
     };
 
-    gitConsoleLogs = [logEntry, ...gitConsoleLogs];
+    // Keep the console history bounded so a long session does not grow without limit.
+    gitConsoleLogs = [logEntry, ...gitConsoleLogs].slice(0, MAX_CONSOLE_LOGS);
 
     try {
-      const res = await tauriInvoke(cmd, args);
+      // The git executable path lives in the backend (see set_git_path); never send it per call.
+      const { gitPath: _unused, ...backendArgs } = args;
+      const res = await tauriInvoke(cmd, backendArgs);
       gitConsoleLogs = gitConsoleLogs.map(log => {
         if (log.id === logId) {
           return { ...log, status: 'success', result: res };
@@ -538,9 +543,9 @@
     settingsMessage = '';
     settingsError = '';
     try {
-      // Verify path by testing git version first
-      const testVersion = await invoke('get_git_version', { gitPath: tempGitPath || null });
-      
+      // The backend validates the executable (runs `--version`) and stores it
+      const testVersion = await invoke('set_git_path', { gitPath: tempGitPath || null });
+
       customGitPath = tempGitPath;
       localStorage.setItem('custom_git_path', customGitPath);
       
@@ -1030,7 +1035,17 @@
       console.error("Failed to resolve current working directory:", err);
     }
 
-    // 3. Load initial states
+    // 3. Hand the saved git executable path to the backend before any git command runs.
+    //    An invalid saved path is ignored: the backend falls back to the git found on PATH.
+    if (customGitPath) {
+      try {
+        await invoke('set_git_path', { gitPath: customGitPath });
+      } catch (err) {
+        console.warn('Saved git path is not usable, falling back to PATH:', err);
+      }
+    }
+
+    // 4. Load initial states
     checkGit();
     loadGitStatus();
     loadBranches();
