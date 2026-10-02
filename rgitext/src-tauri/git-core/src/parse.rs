@@ -2,7 +2,7 @@
 //! (`-z`, explicit separators) so that file names and subjects containing
 //! spaces, quotes or unusual characters cannot break parsing.
 
-use crate::models::{CommitFile, StashEntry, StatusEntry};
+use crate::models::{CommitFile, RemoteInfo, StashEntry, StatusEntry};
 
 fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
@@ -110,6 +110,68 @@ pub fn parse_stash_list(data: &[u8]) -> Vec<StashEntry> {
         .collect()
 }
 
+/// Parses `git config --get-regexp "^remote\..+\.(url|pushurl)$"` (lines like
+/// `remote.origin.url https://...`) into remotes, in order of first appearance.
+pub fn parse_remote_config(text: &str) -> Vec<RemoteInfo> {
+    let mut remotes: Vec<RemoteInfo> = Vec::new();
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(' ') else { continue };
+        let Some(rest) = key.strip_prefix("remote.") else { continue };
+        // Remote names may contain dots: the variable is whatever follows the last one.
+        let Some((name, variable)) = rest.rsplit_once('.') else { continue };
+        if variable != "url" && variable != "pushurl" {
+            continue;
+        }
+        let index = match remotes.iter().position(|r| r.name == name) {
+            Some(i) => i,
+            None => {
+                remotes.push(RemoteInfo { name: name.to_string(), url: String::new(), push_url: None });
+                remotes.len() - 1
+            }
+        };
+        if variable == "url" {
+            if remotes[index].url.is_empty() {
+                remotes[index].url = value.trim().to_string();
+            }
+        } else {
+            remotes[index].push_url = Some(value.trim().to_string());
+        }
+    }
+    remotes
+}
+
+const PROGRESS_PREFIXES: [&str; 9] = [
+    "Enumerating objects",
+    "Counting objects",
+    "Compressing objects",
+    "Writing objects",
+    "Receiving objects",
+    "Resolving deltas",
+    "Unpacking objects",
+    "Updating files",
+    "Checking out files",
+];
+
+/// Reduces the output of a network command to its meaningful lines: git rewrites progress
+/// lines with carriage returns, which would otherwise show up as dozens of repeated lines.
+pub fn summarize_output(text: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for raw in text.split(|c| c == '\r' || c == '\n') {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let bare = line.strip_prefix("remote:").map(str::trim).unwrap_or(line);
+        if PROGRESS_PREFIXES.iter().any(|p| bare.starts_with(p)) {
+            continue;
+        }
+        if out.last() != Some(&line) {
+            out.push(line);
+        }
+    }
+    out.join("\n")
+}
+
 /// Non-empty trimmed lines.
 pub fn lines(text: &str) -> Vec<String> {
     text.lines()
@@ -165,6 +227,25 @@ mod tests {
         assert_eq!((stashes[0].index, stashes[0].hash.as_str()), (0, "deadbeef"));
         assert_eq!(stashes[1].message, "On dev: named | with \u{2502}");
         assert_eq!(stashes[1].timestamp, 1_600_000_000);
+    }
+
+    #[test]
+    fn remote_config() {
+        let text = "remote.origin.url https://example.com/a.git\nremote.origin.pushurl ssh://git@example.com/a.git\nremote.my.fork.url git@host:me/a.git\nremote.origin.fetch +refs/heads/*:refs/remotes/origin/*\n";
+        let remotes = parse_remote_config(text);
+        assert_eq!(remotes.len(), 2);
+        assert_eq!(remotes[0].name, "origin");
+        assert_eq!(remotes[0].push_url.as_deref(), Some("ssh://git@example.com/a.git"));
+        assert_eq!(remotes[1].name, "my.fork");
+        assert_eq!(remotes[1].url, "git@host:me/a.git");
+        assert_eq!(remotes[1].push_url, None);
+    }
+
+    #[test]
+    fn output_summary_drops_progress() {
+        let raw = "remote: Enumerating objects: 5, done.\r\nremote: Counting objects:  20% (1/5)\rremote: Counting objects: 100% (5/5), done.\nReceiving objects:  50% (1/2)\rReceiving objects: 100% (2/2), done.\nFrom https://example.com/a\n   abc..def  main       -> origin/main\n   abc..def  main       -> origin/main\n";
+        assert_eq!(summarize_output(raw), "From https://example.com/a\nabc..def  main       -> origin/main");
+        assert_eq!(summarize_output(""), "");
     }
 
     #[test]

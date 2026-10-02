@@ -2,7 +2,8 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { beginLog, finishLog } from '../stores/consoleLog';
 import type {
   BlameLine, BranchInfo, CommitDetails, CommitFile, CommitOptions, ControlAction, LocalChangesMode, MergeOptions,
-  PickOptions, RepoState, TagInfo, TodoCandidate, TodoItem, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
+  PickOptions, RepoState, TagInfo, TodoCandidate, TodoItem, CloneOptions, FetchOptions, PullOptions, PushOptions,
+  RemoteInfo, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
   GitStatus, GraphState, HunkSelection, RevisionFilter, RevisionPage, SelectionAction, StashEntry, TreeEntry,
   WorkingFile,
 } from './types';
@@ -153,6 +154,27 @@ export const api = {
     call<string>('checkout_remote_branch', { repoPath, remoteBranch, localBranch }),
   configureAndFetchRemote: (repoPath: string, remoteName: string, remoteUrl: string) =>
     call<string>('configure_and_fetch_remote', { repoPath, remoteName, remoteUrl }),
-  pullChanges: (repoPath: string) => call<string>('pull_changes', { repoPath }),
-  pushChanges: (repoPath: string) => call<string>('push_changes', { repoPath }),
+  pullChanges: (repoPath: string, opId?: string, options?: PullOptions) =>
+    call<string>('pull_changes', { repoPath, opId, options }),
+  pushChanges: (repoPath: string, opId?: string, options?: PushOptions) =>
+    call<string>('push_changes', { repoPath, opId, options }),
+  pushTag: (repoPath: string, remote: string, name: string, opId?: string) =>
+    call<string>('push_tag', { repoPath, remote, name, opId }),
+  fetchRemote: (repoPath: string, opId?: string, options?: FetchOptions) =>
+    call<string>('fetch_remote', { repoPath, opId, options }),
+  cloneRepo: (url: string, destination: string, opId?: string, options?: CloneOptions) =>
+    call<string>('clone_repo', { url, destination, opId, options }),
+  initRepo: (path: string, bare = false, initialBranch?: string) =>
+    call<string>('init_repo', { path, bare, initialBranch }),
+  cancelOperation: (opId: string) => call<boolean>('cancel_operation', { opId }),
+  submitAskpass: (id: string, secret: string | null) => call<boolean>('submit_askpass', { id, secret }),
+  listRemotes: (repoPath: string) => call<RemoteInfo[]>('list_remotes', { repoPath }),
+  addRemote: (repoPath: string, name: string, url: string) =>
+    call<string>('add_remote', { repoPath, name, url }),
+  removeRemote: (repoPath: string, name: string) => call<string>('remove_remote', { repoPath, name }),
+  renameRemote: (repoPath: string, oldName: string, newName: string) =>
+    call<string>('rename_remote', { repoPath, oldName, newName }),
+  setRemoteUrl: (repoPath: string, name: string, url: string, push = false) =>
+    call<string>('set_remote_url', { repoPath, name, url, push }),
+  pruneRemote: (repoPath: string, name: string) => call<string>('prune_remote', { repoPath, name }),
 };

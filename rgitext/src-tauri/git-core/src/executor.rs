@@ -4,7 +4,8 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Notify;
 use tokio::process::Command;
 
 use crate::error::GitError;
@@ -147,6 +148,137 @@ pub fn validate_git_executable(path: &str) -> Result<PathBuf, GitError> {
     Ok(p)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamKind {
+    Stdout,
+    Stderr,
+}
+
+/// One line of output of a running git command (progress updates count as lines too).
+#[derive(Debug, Clone)]
+pub struct StreamLine {
+    pub kind: StreamKind,
+    pub text: String,
+}
+
+/// Where the output of a streaming command goes, and how to cancel it.
+#[derive(Clone)]
+pub struct Stream {
+    pub sink: Arc<dyn Fn(StreamLine) + Send + Sync>,
+    /// Notify this to kill the running command.
+    pub cancel: Option<Arc<Notify>>,
+}
+
+/// Reads a pipe to the end, reporting every line. Git rewrites progress lines with `\r`, so
+/// both `\r` and `\n` end a line. Returns everything that was read.
+async fn pump<R>(mut reader: R, kind: StreamKind, sink: Arc<dyn Fn(StreamLine) + Send + Sync>) -> Vec<u8>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut all = Vec::new();
+    let mut pending: Vec<u8> = Vec::new();
+    let mut buf = [0u8; 4096];
+    let emit = |bytes: &[u8]| {
+        let text = String::from_utf8_lossy(bytes);
+        let text = text.trim();
+        if !text.is_empty() {
+            sink(StreamLine { kind, text: text.to_string() });
+        }
+    };
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                all.extend_from_slice(&buf[..n]);
+                for &b in &buf[..n] {
+                    if b == b'\n' || b == b'\r' {
+                        emit(&pending);
+                        pending.clear();
+                    } else {
+                        pending.push(b);
+                    }
+                }
+            }
+        }
+    }
+    emit(&pending);
+    all
+}
+
+/// Best effort: also stop the processes git started (ssh, remote helpers, hooks).
+fn kill_process_tree(pid: Option<u32>) {
+    #[cfg(windows)]
+    if let Some(pid) = pid {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("taskkill");
+        c.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let _ = c.output();
+    }
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
+async fn stream_output(
+    mut child: tokio::process::Child,
+    cmd: &GitCommand,
+    stream: &Stream,
+) -> Result<GitOutput, GitError> {
+    let stdout = child.stdout.take().ok_or_else(|| GitError::Other("no stdout pipe".into()))?;
+    let stderr = child.stderr.take().ok_or_else(|| GitError::Other("no stderr pipe".into()))?;
+    let out_task = pump(stdout, StreamKind::Stdout, stream.sink.clone());
+    let err_task = pump(stderr, StreamKind::Stderr, stream.sink.clone());
+
+    // The child lives in its own task so that it can be killed without waiting for the pipes:
+    // processes started by git may keep them open after git itself is gone.
+    let pid = child.id();
+    let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+    let waiter = tokio::spawn(async move {
+        tokio::select! {
+            status = child.wait() => status.map(Some),
+            // Also fires when the sender is dropped (e.g. the caller gave up).
+            _ = kill_rx => {
+                kill_process_tree(pid);
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                Ok(None)
+            }
+        }
+    });
+
+    let cancel = stream.cancel.clone();
+    let cancelled = async {
+        match &cancel {
+            Some(n) => n.notified().await,
+            None => std::future::pending::<()>().await,
+        }
+    };
+    let work = async { tokio::join!(out_task, err_task, waiter) };
+
+    let finished = tokio::select! {
+        r = tokio::time::timeout(cmd.timeout, work) => Some(r),
+        _ = cancelled => None,
+    };
+
+    match finished {
+        None => {
+            let _ = kill_tx.send(());
+            Err(GitError::Cancelled)
+        }
+        Some(Err(_)) => {
+            let _ = kill_tx.send(());
+            Err(GitError::Timeout(cmd.timeout.as_secs()))
+        }
+        Some(Ok((stdout, stderr, status))) => {
+            let status = status.map_err(|e| GitError::Other(format!("git task failed: {}", e)))??;
+            match status {
+                Some(status) => Ok(GitOutput { code: status.code(), stdout, stderr }),
+                None => Err(GitError::Cancelled),
+            }
+        }
+    }
+}
+
 pub struct GitExecutor {
     custom_path: Mutex<Option<PathBuf>>,
     resolved: Mutex<Option<PathBuf>>,
@@ -198,7 +330,7 @@ impl GitExecutor {
 
     async fn probe(&self, git: &Path) -> Result<String, GitError> {
         let cmd = GitCommand::new(["--version"]).timeout(VERSION_TIMEOUT);
-        let out = self.spawn_once(git, &cmd).await?;
+        let out = self.spawn_once(git, &cmd, None).await?;
         if out.success() {
             Ok(out.stdout_text().trim().to_string())
         } else {
@@ -234,6 +366,26 @@ impl GitExecutor {
 
     /// Runs git and returns its output regardless of the exit status.
     pub async fn run(&self, cmd: GitCommand) -> Result<GitOutput, GitError> {
+        self.run_inner(cmd, None).await
+    }
+
+    /// Like [`run`](Self::run), but reports every line git prints (progress included) to
+    /// `stream.sink` while the command is running, and can be cancelled.
+    pub async fn run_streaming(&self, cmd: GitCommand, stream: Stream) -> Result<GitOutput, GitError> {
+        self.run_inner(cmd, Some(&stream)).await
+    }
+
+    /// Streaming variant of [`run_checked`](Self::run_checked).
+    pub async fn run_streaming_checked(&self, cmd: GitCommand, stream: Stream) -> Result<GitOutput, GitError> {
+        let out = self.run_streaming(cmd, stream).await?;
+        if out.success() {
+            Ok(out)
+        } else {
+            Err(out.into_error())
+        }
+    }
+
+    async fn run_inner(&self, cmd: GitCommand, stream: Option<&Stream>) -> Result<GitOutput, GitError> {
         if let Some(cwd) = &cmd.cwd {
             if !cwd.is_dir() {
                 return Err(GitError::invalid(format!(
@@ -248,7 +400,7 @@ impl GitExecutor {
 
         let cached = self.resolved.lock().unwrap().clone();
         if let Some(path) = cached {
-            match self.spawn_once(&path, &cmd).await {
+            match self.spawn_once(&path, &cmd, stream).await {
                 Err(GitError::NotFound(_)) => {}
                 other => return other,
             }
@@ -256,7 +408,7 @@ impl GitExecutor {
 
         let mut last_detail = String::new();
         for candidate in self.candidates() {
-            match self.spawn_once(&candidate, &cmd).await {
+            match self.spawn_once(&candidate, &cmd, stream).await {
                 Err(GitError::NotFound(detail)) => last_detail = detail,
                 Ok(out) => {
                     *self.resolved.lock().unwrap() = Some(candidate);
@@ -278,7 +430,7 @@ impl GitExecutor {
         }
     }
 
-    async fn spawn_once(&self, git: &Path, cmd: &GitCommand) -> Result<GitOutput, GitError> {
+    async fn spawn_once(&self, git: &Path, cmd: &GitCommand, stream: Option<&Stream>) -> Result<GitOutput, GitError> {
         let mut c = Command::new(git);
         c.args([
             "-c",
@@ -326,6 +478,10 @@ impl GitExecutor {
                 stdin.write_all(data).await?;
                 drop(stdin);
             }
+        }
+
+        if let Some(stream) = stream {
+            return stream_output(child, cmd, stream).await;
         }
 
         let output = tokio::time::timeout(cmd.timeout, child.wait_with_output())

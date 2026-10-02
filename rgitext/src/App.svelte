@@ -14,6 +14,10 @@
   import ModalDialog from './components/ModalDialog.svelte';
   import OperationBanner from './components/OperationBanner.svelte';
   import RebaseTodoDialog from './components/RebaseTodoDialog.svelte';
+  import RemotesDialog from './components/RemotesDialog.svelte';
+  import SyncBar from './components/SyncBar.svelte';
+  import { startAskpassListener } from './lib/askpass';
+  import { startProgressListener } from './lib/network';
 
   import * as actions from './lib/actions';
   import {
@@ -43,17 +47,23 @@
   $: actions.onSelectedWorkingFileChanged($selectedWorkingFile, $diffOptions);
 
   let unlistenGitLog: UnlistenFn | undefined;
+  let unlistenProgress: UnlistenFn | undefined;
+  let unlistenAskpass: UnlistenFn | undefined;
 
   onMount(async () => {
     window.addEventListener('focus', actions.refreshOnFocus);
     // Listen to git command logs first so the initial load is captured too.
     unlistenGitLog = await startGitLogListener();
+    unlistenProgress = await startProgressListener();
+    unlistenAskpass = await startAskpassListener();
     await actions.initialize();
   });
 
   onDestroy(() => {
     window.removeEventListener('focus', actions.refreshOnFocus);
     unlistenGitLog?.();
+    unlistenProgress?.();
+    unlistenAskpass?.();
   });
 </script>
 
@@ -121,6 +131,7 @@
       handlePathKeydown={actions.handlePathKeydown}
     />
 
+    <SyncBar />
     <OperationBanner />
 
     {#if $pathError}
@@ -193,3 +204,4 @@
 
 <ModalDialog />
 <RebaseTodoDialog />
+<RemotesDialog />

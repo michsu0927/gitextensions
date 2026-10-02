@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { closeDialog, dialog, type FieldValue } from '../lib/dialog';
+  import { cancelDialog, closeDialog, dialog, type FieldValue } from '../lib/dialog';
 
   let values: Record<string, FieldValue> = {};
   let error = '';
@@ -56,7 +56,7 @@
 
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
-      closeDialog();
+      cancelDialog();
     } else if (event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement)) {
       event.preventDefault();
       void submit();
@@ -66,7 +66,7 @@
 
 {#if $dialog}
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="md-overlay" on:click|self={closeDialog}>
+  <div class="md-overlay" on:click|self={cancelDialog}>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="md" role="dialog" aria-modal="true" aria-label={$dialog.title} bind:this={container} on:keydown={onKeyDown}>
       <h3 class="md-title">{$dialog.title}</h3>
@@ -90,6 +90,15 @@
               <input
                 id="md-{field.name}"
                 type="text"
+                placeholder={field.placeholder ?? ''}
+                value={String(values[field.name] ?? '')}
+                on:input={(e) => (values[field.name] = e.currentTarget.value)}
+              />
+            {:else if field.kind === 'password'}
+              <input
+                id="md-{field.name}"
+                type="password"
+                autocomplete="off"
                 placeholder={field.placeholder ?? ''}
                 value={String(values[field.name] ?? '')}
                 on:input={(e) => (values[field.name] = e.currentTarget.value)}
@@ -119,7 +128,7 @@
       {/each}
       {#if error}<div class="md-error">{error}</div>{/if}
       <div class="md-actions">
-        <button class="md-cancel" on:click={closeDialog}>Cancel</button>
+        <button class="md-cancel" on:click={cancelDialog}>Cancel</button>
         <button class="md-submit" class:danger={$dialog.danger} disabled={busy} on:click={submit}>
           {$dialog.submitLabel}
         </button>
@@ -176,6 +185,7 @@
     color: #cbd5e1 !important;
   }
   .md-field input[type='text'],
+  .md-field input[type='password'],
   .md-field textarea,
   .md-field select {
     background: #0b0f19;

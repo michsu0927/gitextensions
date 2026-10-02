@@ -6,10 +6,11 @@ rust-version = "1.75"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.35", features = ["process", "time", "io-util", "rt"] }
+tokio = { version = "1.35", features = ["process", "time", "io-util", "rt", "sync", "macros", "net"] }
 tracing = "0.1"
+serde_json = "1.0"
+getrandom = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
 tempfile = "3"
-serde_json = "1.0"

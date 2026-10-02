@@ -2,6 +2,7 @@
 //!
 //! This crate has no Tauri dependency so that it can be unit-tested on its own.
 
+pub mod askpass;
 pub mod blame;
 pub mod diff;
 pub mod error;
@@ -17,4 +18,6 @@ pub mod tree;
 pub mod validate;
 
 pub use error::GitError;
-pub use executor::{GitCommand, GitExecutor, GitOutput, LogSink, DEFAULT_TIMEOUT, NETWORK_TIMEOUT};
+pub use executor::{
+    GitCommand, GitExecutor, GitOutput, LogSink, Stream, StreamKind, StreamLine, DEFAULT_TIMEOUT, NETWORK_TIMEOUT,
+};

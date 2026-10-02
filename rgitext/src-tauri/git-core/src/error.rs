@@ -13,6 +13,8 @@ pub enum GitError {
         stderr: String,
     },
     Timeout(u64),
+    /// The user cancelled a running command.
+    Cancelled,
     InvalidArgument(String),
     Io(std::io::Error),
     Other(String),
@@ -52,6 +54,7 @@ impl fmt::Display for GitError {
                 }
             }
             GitError::Timeout(secs) => write!(f, "Git command timed out after {} seconds", secs),
+            GitError::Cancelled => write!(f, "Cancelled."),
             GitError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
             GitError::Io(e) => write!(f, "I/O error: {}", e),
             GitError::Other(msg) => write!(f, "{}", msg),

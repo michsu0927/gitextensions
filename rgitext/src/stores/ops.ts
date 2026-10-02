@@ -11,3 +11,9 @@ export const opBusy = writable(false);
 
 /** Set to the target of an interactive rebase to open the todo list dialog. */
 export const rebaseDialogOnto = writable<string | null>(null);
+
+/** Live output of the running network operation (fetch, pull, push, clone). */
+export const progress = writable<import('../lib/types').ProgressState | null>(null);
+
+/** Whether the remotes manager is open. */
+export const remotesDialogOpen = writable(false);

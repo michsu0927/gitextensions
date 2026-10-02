@@ -51,3 +51,11 @@ pub struct StashEntry {
     /// Hash of the stash commit (usable with the commit diff commands).
     pub hash: String,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RemoteInfo {
+    pub name: String,
+    pub url: String,
+    /// Separate push URL, if configured.
+    pub push_url: Option<String>,
+}

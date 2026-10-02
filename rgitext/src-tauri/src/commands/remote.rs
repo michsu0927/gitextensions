@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use tauri::State;
 
 use super::{in_repo, message_of, AppState, CmdResult};
+use git_core::models::RemoteInfo;
 use git_core::{parse, validate, NETWORK_TIMEOUT};
 
 #[tauri::command]
@@ -13,6 +14,101 @@ pub async fn get_git_remotes(state: State<'_, AppState>, repo_path: String) -> C
         .into_iter()
         .filter(|name| seen.insert(name.clone()))
         .collect())
+}
+
+/// Remotes with their fetch and push URLs.
+#[tauri::command]
+pub async fn list_remotes(state: State<'_, AppState>, repo_path: String) -> CmdResult<Vec<RemoteInfo>> {
+    // Exits with status 1 when nothing matches, which just means "no remotes".
+    let out = state
+        .git
+        .run(in_repo(
+            &repo_path,
+            ["config", "--get-regexp", r"^remote\..+\.(url|pushurl)$"],
+        ))
+        .await?;
+    Ok(parse::parse_remote_config(&out.stdout_text()))
+}
+
+#[tauri::command]
+pub async fn add_remote(
+    state: State<'_, AppState>,
+    repo_path: String,
+    name: String,
+    url: String,
+) -> CmdResult<String> {
+    let name = validate::remote_name(name.trim())?;
+    let url = validate::remote_url(url.trim())?;
+    state
+        .git
+        .run_checked(in_repo(&repo_path, ["remote", "add", name, url]))
+        .await
+        .map_err(|e| e.context("Failed to add the remote:"))?;
+    Ok(format!("Remote '{}' added.", name))
+}
+
+#[tauri::command]
+pub async fn remove_remote(state: State<'_, AppState>, repo_path: String, name: String) -> CmdResult<String> {
+    let name = validate::remote_name(&name)?;
+    state
+        .git
+        .run_checked(in_repo(&repo_path, ["remote", "remove", name]))
+        .await
+        .map_err(|e| e.context("Failed to remove the remote:"))?;
+    Ok(format!("Remote '{}' removed.", name))
+}
+
+#[tauri::command]
+pub async fn rename_remote(
+    state: State<'_, AppState>,
+    repo_path: String,
+    old_name: String,
+    new_name: String,
+) -> CmdResult<String> {
+    let old = validate::remote_name(&old_name)?;
+    let new = validate::remote_name(new_name.trim())?;
+    state
+        .git
+        .run_checked(in_repo(&repo_path, ["remote", "rename", old, new]))
+        .await
+        .map_err(|e| e.context("Failed to rename the remote:"))?;
+    Ok(format!("Remote '{}' renamed to '{}'.", old, new))
+}
+
+/// Changes the fetch URL, or the push URL with `push = true`.
+#[tauri::command]
+pub async fn set_remote_url(
+    state: State<'_, AppState>,
+    repo_path: String,
+    name: String,
+    url: String,
+    push: Option<bool>,
+) -> CmdResult<String> {
+    let name = validate::remote_name(&name)?;
+    let url = validate::remote_url(url.trim())?;
+    let mut cmd = in_repo(&repo_path, ["remote", "set-url"]);
+    if push.unwrap_or(false) {
+        cmd = cmd.arg("--push");
+    }
+    state
+        .git
+        .run_checked(cmd.arg(name).arg(url))
+        .await
+        .map_err(|e| e.context("Failed to change the URL:"))?;
+    Ok(format!("URL of '{}' updated.", name))
+}
+
+/// Removes local tracking branches that no longer exist on the remote.
+#[tauri::command]
+pub async fn prune_remote(state: State<'_, AppState>, repo_path: String, name: String) -> CmdResult<String> {
+    let name = validate::remote_name(&name)?;
+    let out = state
+        .git
+        .run_checked(in_repo(&repo_path, ["remote", "prune", name]).timeout(NETWORK_TIMEOUT))
+        .await
+        .map_err(|e| e.context("Prune failed:"))?;
+    let message = message_of(&out);
+    Ok(if message.is_empty() { "Nothing to prune.".to_string() } else { message })
 }
 
 #[tauri::command]
@@ -80,25 +176,4 @@ pub async fn configure_and_fetch_remote(
         .map_err(|e| e.context("Fetch failed:"))?;
 
     Ok(format!("Remote '{}' configured and fetched successfully!", name))
-}
-
-#[tauri::command]
-pub async fn pull_changes(state: State<'_, AppState>, repo_path: String) -> CmdResult<String> {
-    let out = state
-        .git
-        .run_checked(in_repo(&repo_path, ["pull"]).timeout(NETWORK_TIMEOUT))
-        .await
-        .map_err(|e| e.context("Pull failed:"))?;
-    Ok(format!("Pull successful:\n{}", out.stdout_text().trim()))
-}
-
-#[tauri::command]
-pub async fn push_changes(state: State<'_, AppState>, repo_path: String) -> CmdResult<String> {
-    // `git push` reports its result on stderr, so include both streams.
-    let out = state
-        .git
-        .run_checked(in_repo(&repo_path, ["push"]).timeout(NETWORK_TIMEOUT))
-        .await
-        .map_err(|e| e.context("Push failed:"))?;
-    Ok(format!("Push successful:\n{}", message_of(&out)))
 }

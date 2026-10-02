@@ -5,7 +5,7 @@ export type FieldValue = string | boolean;
 export interface DialogField {
   name: string;
   label: string;
-  kind: 'text' | 'textarea' | 'checkbox' | 'select';
+  kind: 'text' | 'password' | 'textarea' | 'checkbox' | 'select';
   value: FieldValue;
   placeholder?: string;
   hint?: string;
@@ -21,6 +21,8 @@ export interface DialogSpec {
   /** Style the submit button as a destructive action. */
   danger?: boolean;
   onSubmit: (values: Record<string, FieldValue>) => void | Promise<void>;
+  /** Called when the dialog is dismissed (cancel button, Escape, click outside) instead of submitted. */
+  onCancel?: () => void;
 }
 
 /** The dialog currently shown (null = none). */
@@ -43,4 +45,14 @@ export function confirmDialog(
   danger = false,
 ): void {
   openDialog({ title, description, fields: [], submitLabel, danger, onSubmit: () => onConfirm() });
+}
+
+/** Dismisses the current dialog as a cancel (runs its `onCancel`). */
+export function cancelDialog(): void {
+  let spec: DialogSpec | null = null;
+  dialog.update((current) => {
+    spec = current;
+    return null;
+  });
+  (spec as DialogSpec | null)?.onCancel?.();
 }

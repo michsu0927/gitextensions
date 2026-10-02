@@ -278,3 +278,52 @@ export interface PickOptions {
 }
 
 export type LocalChangesMode = 'keep' | 'merge' | 'reset' | 'stash';
+
+// ---------------------------------------------------------------------------
+// Remotes and network operations (Phase 2c)
+// ---------------------------------------------------------------------------
+
+export interface RemoteInfo {
+  name: string;
+  url: string;
+  push_url: string | null;
+}
+
+export interface FetchOptions {
+  all?: boolean;
+  remote?: string;
+  prune?: boolean;
+  tags?: boolean;
+}
+
+export interface PullOptions {
+  remote?: string;
+  branch?: string;
+  mode?: 'merge' | 'rebase' | 'ff-only' | '';
+  autostash?: boolean;
+  prune?: boolean;
+}
+
+export interface PushOptions {
+  remote?: string;
+  branch?: string;
+  remoteBranch?: string;
+  setUpstream?: boolean;
+  forceWithLease?: boolean;
+  force?: boolean;
+  tags?: boolean;
+}
+
+export interface CloneOptions {
+  branch?: string;
+  depth?: number;
+  recurseSubmodules?: boolean;
+  bare?: boolean;
+}
+
+/** Live output of a running network operation. */
+export interface ProgressState {
+  opId: string;
+  title: string;
+  lines: string[];
+}

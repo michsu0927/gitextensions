@@ -126,3 +126,14 @@ rgitext/
 - 左側 repo 樹點選分支 / tag 後跳到對應 commit。
 - 圖形欄寬度可調整、超過 14 條 lane 的縮排顯示。
 - Combined diff（`--cc`）顯示；目前合併 commit 以第一個 parent 為基準。
+
+### Phase 2 — 寫入操作（進行中）
+已完成：
+- 2a 提交流程：hunk / 逐行 stage、unstage、discard（`patch.rs` 由顯示中的 diff 重建部分 patch，經 `git apply --recount`）、amend、GPG 簽署、commit.template、stash（save / apply / pop / drop）。
+- 2b 分支與歷史操作：branch / tag 建立與刪除、checkout（含本地變更處理與自動 stash）、merge（策略）、rebase、互動式 rebase（todo 由 rGitExt 提供，`reword` 以 `exec git commit --amend` 表達）、cherry-pick、revert、reset、進行中操作偵測與 continue / skip / abort。
+- 2c 網路操作：fetch / pull / push / clone / init，進度串流與取消、remote 管理；認證以 askpass（`GIT_ASKPASS` / `SSH_ASKPASS` 指向本程式，經 loopback socket + token 回到 GUI）處理，HTTPS 另可由 Git Credential Manager 自己的視窗處理。
+
+未完成（2d）：
+- 衝突解決（三向）與 mergetool / difftool。
+- 多選 commit 的 cherry-pick / revert、submodule、worktree、bisect。
+- askpass 在 Windows GUI 子系統下的 stdout 行為只在 Linux 上以協定層測試過，需要在 Windows 實機驗證。

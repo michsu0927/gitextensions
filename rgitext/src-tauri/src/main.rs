@@ -2,28 +2,56 @@
 
 mod commands;
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use git_core::{GitExecutor, LogSink};
+use git_core::{askpass, GitExecutor, LogSink};
 use tauri::{Emitter, Manager};
 
-use commands::AppState;
+use commands::{AppState, AskpassConfig};
 
 fn main() {
+    // git and ssh run this executable as their askpass program (see `commands::network`):
+    // answer the prompt through the running app and exit without starting a second GUI.
+    if std::env::var_os(askpass::ENV_ADDR).is_some() {
+        let args: Vec<String> = std::env::args().collect();
+        std::process::exit(askpass::run_client(&args));
+    }
+
     tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
         .setup(|app| {
-            // Every git invocation is mirrored to the frontend console drawer.
             let handle = app.handle().clone();
+
+            // Every git invocation is mirrored to the frontend console drawer.
+            let log_handle = handle.clone();
             let sink: LogSink = Arc::new(move |line: String| {
-                if let Err(e) = handle.emit("git-command-log", line) {
+                if let Err(e) = log_handle.emit("git-command-log", line) {
                     tracing::warn!("failed to emit git-command-log: {}", e);
                 }
             });
+
+            // Credential prompts of git/ssh are answered through a loopback socket.
+            let (listener, addr) = tauri::async_runtime::block_on(askpass::bind())?;
+            let token = askpass::new_token();
             app.manage(AppState {
                 git: GitExecutor::new(Some(sink)),
+                app: handle.clone(),
+                operations: Default::default(),
+                pending_prompts: Default::default(),
+                askpass: AskpassConfig {
+                    addr: addr.to_string(),
+                    token: token.clone(),
+                    program: std::env::current_exe()?,
+                },
+                next_prompt_id: AtomicU64::new(1),
             });
+            let prompt_handle = handle.clone();
+            let handler: askpass::Handler = Arc::new(move |prompt| {
+                Box::pin(commands::network::request_secret(prompt_handle.clone(), prompt))
+            });
+            tauri::async_runtime::spawn(askpass::serve(listener, token, handler));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -83,11 +111,23 @@ fn main() {
             commands::stash::stash_pop,
             commands::stash::stash_drop,
             commands::remote::get_git_remotes,
+            commands::remote::list_remotes,
+            commands::remote::add_remote,
+            commands::remote::remove_remote,
+            commands::remote::rename_remote,
+            commands::remote::set_remote_url,
+            commands::remote::prune_remote,
             commands::remote::get_git_remote_branches,
             commands::remote::checkout_remote_branch,
             commands::remote::configure_and_fetch_remote,
-            commands::remote::pull_changes,
-            commands::remote::push_changes
+            commands::network::pull_changes,
+            commands::network::push_changes,
+            commands::network::push_tag,
+            commands::network::fetch_remote,
+            commands::network::clone_repo,
+            commands::network::init_repo,
+            commands::network::cancel_operation,
+            commands::network::submit_askpass
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
