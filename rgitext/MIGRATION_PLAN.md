@@ -71,15 +71,9 @@ rgitext/
 - 衝突解決（三向）、mergetool/difftool。
 - 約 60 個「收集參數→執行 git→顯示輸出」的對話框用通用 Process 元件 + 表單 schema 模板化。
 
-### Phase 3 — 外圍與相容
-- 設定視窗（約 30 頁）、分層設定與舊設定匯入、主題（沿用 CSS 子集 → CSS 變數）、快捷鍵自訂。
-- Dashboard / 最近 repo / 分類。
-- CLI 相容：`browse/commit/pull/push/clone/blame/filehistory/fileeditor/mergetool/difftool…`（以 `GitUICommands.RunCommandBasedOnArgument` 清單為驗收）；`fileeditor`、`mergetool`、`difftool` 會被 git 當工具呼叫，必須保留。
-- 內嵌終端（xterm.js + portable-pty）、submodule、worktree、bisect、gc、archive、grep、patch（format/apply/am）。
-- 單一實例：原版無，可選 `tauri-plugin-single-instance`。
+### Phase 3 與 Phase 4
 
-### Phase 4 — 評估項目
-- 外掛、i18n、Shell 整合（Explorer 右鍵、JumpList）、安裝程式（WiX → Tauri bundler / NSIS）、自動更新、telemetry。
+詳見 [TODO.md](TODO.md)。
 
 ## 5. 外掛（Phase 4 評估）
 
