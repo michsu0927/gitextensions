@@ -1,6 +1,9 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { beginLog, finishLog } from '../stores/consoleLog';
-import type { CommitFile, CommitItem, DirEntry, GitStatus, WorkingFile } from './types';
+import type {
+  BlameLine, CommitDetails, CommitFile, DiffFile, DiffOptions, DirEntry, FileContent, GitStatus, GraphState,
+  RevisionFilter, RevisionPage, TreeEntry, WorkingFile,
+} from './types';
 
 type Args = Record<string, unknown>;
 
@@ -35,17 +38,35 @@ export const api = {
     call<DirEntry[]>('list_directory', { repoPath, relativeDir }),
 
   // history
-  getCommitLog: (repoPath: string, limit: number) =>
-    call<CommitItem[]>('get_commit_log', { repoPath, limit }),
+  getRevisions: (
+    repoPath: string,
+    filter: RevisionFilter,
+    skip: number,
+    limit: number,
+    graphState: GraphState | null,
+  ) =>
+    call<RevisionPage>('get_revisions', {
+      repoPath,
+      query: { ...filter, skip, limit },
+      graphState,
+    }),
+  getCommitDetails: (repoPath: string, hash: string) =>
+    call<CommitDetails>('get_commit_details', { repoPath, hash }),
   getCommitFiles: (repoPath: string, commitHash: string) =>
     call<CommitFile[]>('get_commit_files', { repoPath, commitHash }),
-  getCommitFileDiff: (repoPath: string, commitHash: string, filePath: string) =>
-    call<string>('get_commit_file_diff', { repoPath, commitHash, filePath }),
+  getCommitDiff: (repoPath: string, hash: string, filePath: string | null, options: DiffOptions) =>
+    call<DiffFile[]>('get_commit_diff', { repoPath, hash, filePath, options }),
+  getBlame: (repoPath: string, filePath: string, rev: string | null, ignoreWhitespace: boolean) =>
+    call<BlameLine[]>('get_blame', { repoPath, filePath, rev, ignoreWhitespace }),
+  getTree: (repoPath: string, rev: string, dir: string) =>
+    call<TreeEntry[]>('get_tree', { repoPath, rev, dir }),
+  getFileContent: (repoPath: string, path: string, rev: string | null) =>
+    call<FileContent>('get_file_content', { repoPath, path, rev }),
 
   // working directory
   getWorkingDirFiles: (repoPath: string) => call<WorkingFile[]>('get_working_dir_files', { repoPath }),
-  getWorkingFileDiff: (repoPath: string, filePath: string, isStaged: boolean) =>
-    call<string>('get_working_file_diff', { repoPath, filePath, isStaged }),
+  getWorkingDiff: (repoPath: string, filePath: string, isStaged: boolean, options: DiffOptions) =>
+    call<DiffFile[]>('get_working_diff', { repoPath, filePath, isStaged, options }),
   stageFiles: (repoPath: string, filePaths: string[]) =>
     call<string>('stage_files', { repoPath, filePaths }),
   unstageFiles: (repoPath: string, filePaths: string[]) =>

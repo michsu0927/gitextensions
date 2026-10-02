@@ -19,8 +19,20 @@ export function getRawGitCommand(cmd: string, args: Args): string[] {
       return ['git rev-parse --is-inside-work-tree' + (args.repoPath ? ` (dir: ${String(args.repoPath)})` : '')];
     case 'get_git_status':
       return ['git status --porcelain=v1 -z -b', 'git status'];
-    case 'get_commit_log':
-      return ['git log --graph -n ' + String(args.limit ?? 100)];
+    case 'get_revisions':
+      return ['git log --topo-order --decorate=full (paged)'];
+    case 'get_commit_details':
+      return ['git log -1 --decorate=full ' + str(args.hash)];
+    case 'get_commit_diff':
+      return ['git show --format= -m --first-parent ' + str(args.hash)];
+    case 'get_working_diff':
+      return ['git diff ' + (args.isStaged ? '--cached ' : '') + '-- "' + str(args.filePath) + '"'];
+    case 'get_blame':
+      return ['git blame --porcelain -- "' + str(args.filePath) + '"'];
+    case 'get_tree':
+      return ['git ls-tree -z -l ' + str(args.rev)];
+    case 'get_file_content':
+      return ['git cat-file blob ' + str(args.rev) + ':' + str(args.path)];
     case 'get_git_branches':
       return ['git branch --format="%(refname:short)"'];
     case 'get_git_tags':

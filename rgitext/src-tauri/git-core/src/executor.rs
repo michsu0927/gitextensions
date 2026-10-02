@@ -280,7 +280,14 @@ impl GitExecutor {
 
     async fn spawn_once(&self, git: &Path, cmd: &GitCommand) -> Result<GitOutput, GitError> {
         let mut c = Command::new(git);
-        c.args(["-c", "core.quotepath=false", "-c", "protocol.ext.allow=never"]);
+        c.args([
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "protocol.ext.allow=never",
+            "-c",
+            "color.ui=false",
+        ]);
         c.args(&cmd.args);
         if let Some(dir) = &cmd.cwd {
             c.current_dir(dir);

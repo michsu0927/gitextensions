@@ -2,15 +2,7 @@
 //! (`-z`, explicit separators) so that file names and subjects containing
 //! spaces, quotes or unusual characters cannot break parsing.
 
-use crate::models::{CommitFile, CommitItem, StatusEntry};
-
-/// Marks the start of a commit record in `git log --graph` output.
-pub const LOG_RECORD_MARK: char = '\x1e';
-/// Separates fields inside a commit record.
-pub const LOG_FIELD_SEP: char = '\x1f';
-
-/// `--pretty` argument matching [`parse_log`].
-pub const LOG_FORMAT: &str = "--pretty=format:%x1e%H%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%d";
+use crate::models::{CommitFile, StatusEntry};
 
 fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
@@ -62,61 +54,6 @@ pub fn branch_from_status_header(header: &str) -> String {
         Some(pos) => h[..pos].to_string(),
         None => h.to_string(),
     }
-}
-
-/// Parses `git log --graph LOG_FORMAT` output.
-pub fn parse_log(text: &str) -> Vec<CommitItem> {
-    let mut commits = Vec::new();
-    for line in text.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Some(pos) = line.find(LOG_RECORD_MARK) else {
-            // Pure graph connector line.
-            commits.push(CommitItem {
-                graph: line.to_string(),
-                hash: String::new(),
-                author: String::new(),
-                email: String::new(),
-                date: 0,
-                subject: String::new(),
-                refs: Vec::new(),
-            });
-            continue;
-        };
-        let graph = line[..pos].to_string();
-        let fields: Vec<&str> = line[pos + LOG_RECORD_MARK.len_utf8()..]
-            .split(LOG_FIELD_SEP)
-            .collect();
-        if fields.len() < 5 {
-            continue;
-        }
-        commits.push(CommitItem {
-            graph,
-            hash: fields[0].to_string(),
-            author: fields[1].to_string(),
-            email: fields[2].to_string(),
-            date: fields[3].parse().unwrap_or(0),
-            subject: fields[4].to_string(),
-            refs: fields.get(5).map(|d| parse_decoration(d)).unwrap_or_default(),
-        });
-    }
-    commits
-}
-
-/// Parses the `%d` decoration, e.g. ` (HEAD -> main, tag: v1, origin/main)`.
-pub fn parse_decoration(raw: &str) -> Vec<String> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return Vec::new();
-    }
-    let inner = raw.strip_prefix('(').unwrap_or(raw);
-    let inner = inner.strip_suffix(')').unwrap_or(inner);
-    inner
-        .split(',')
-        .map(|r| r.trim().to_string())
-        .filter(|r| !r.is_empty())
-        .collect()
 }
 
 /// Parses `git diff-tree --name-status -r -z` / `git diff --name-status -z`.
@@ -180,22 +117,6 @@ mod tests {
         assert_eq!(branch_from_status_header("feature/x...origin/feature/x [gone]"), "feature/x");
         assert_eq!(branch_from_status_header("No commits yet on master"), "master");
         assert_eq!(branch_from_status_header("HEAD (no branch)"), "HEAD (no branch)");
-    }
-
-    #[test]
-    fn log_records() {
-        let text = "* \x1eabc\x1fAlice\x1fa@x.io\x1f1700000000\x1ffix: a | b \u{2502} c\x1f (HEAD -> main, tag: v1)\n|\\  \n| * \x1edef\x1fBob\x1fb@x.io\x1f1699999999\x1fsubject\x1f\n";
-        let items = parse_log(text);
-        assert_eq!(items.len(), 3);
-        assert_eq!(items[0].graph, "* ");
-        assert_eq!(items[0].hash, "abc");
-        assert_eq!(items[0].subject, "fix: a | b \u{2502} c");
-        assert_eq!(items[0].date, 1_700_000_000);
-        assert_eq!(items[0].refs, vec!["HEAD -> main", "tag: v1"]);
-        assert_eq!(items[1].hash, "");
-        assert_eq!(items[1].graph, "|\\  ");
-        assert_eq!(items[2].graph, "| * ");
-        assert!(items[2].refs.is_empty());
     }
 
     #[test]

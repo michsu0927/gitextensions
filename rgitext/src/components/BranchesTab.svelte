@@ -1,4 +1,5 @@
 <script>
+  import DiffView from './history/DiffView.svelte';
   export let branches = [];
   export let isLoadingBranches = false;
   export let branchesError = '';
@@ -13,7 +14,8 @@
   export let workingFilesError = '';
   /** @type {import("../lib/types").SelectedWorkingFile | null} */
   export let selectedWorkingFile = null; // { path: string, is_staged: boolean }
-  export let selectedWorkingFileDiff = '';
+  /** @type {import("../lib/types").DiffFile[]} */
+  export let selectedWorkingFileDiff = [];
   export let isLoadingWorkingFileDiff = false;
   export let expandedDirs = {};
 
@@ -94,78 +96,6 @@
     if (confirm(`Are you sure you want to delete branch "${branch}"?`)) {
       performDeleteBranch(branch, false);
     }
-  }
-
-  // Copy diff tooltip state
-  let copyDiffTooltip = '';
-  let copyDiffTooltipTimer = null;
-
-  function copyDiffCode(diffText) {
-    if (!diffText) return;
-    const lines = diffText.split('\n');
-    const cleaned = lines
-      .filter(line => {
-        // Skip diff metadata lines
-        if (line.startsWith('diff --git')) return false;
-        if (line.startsWith('index ')) return false;
-        if (line.startsWith('---')) return false;
-        if (line.startsWith('+++')) return false;
-        if (line.startsWith('@@')) return false;
-        if (line.startsWith('new file mode')) return false;
-        if (line.startsWith('old mode') || line.startsWith('new mode')) return false;
-        if (line.startsWith('deleted file mode')) return false;
-        if (line.startsWith('similarity index') || line.startsWith('rename from') || line.startsWith('rename to')) return false;
-        return true;
-      })
-      .map(line => {
-        // Strip leading + or - (single character) from diff content lines
-        if ((line.startsWith('+') || line.startsWith('-')) && !line.startsWith('+++') && !line.startsWith('---')) {
-          return line.substring(1);
-        }
-        // Context lines start with a space in unified diff
-        if (line.startsWith(' ')) {
-          return line.substring(1);
-        }
-        return line;
-      })
-      .join('\n');
-
-    navigator.clipboard.writeText(cleaned).then(() => {
-      copyDiffTooltip = 'Copied!';
-      if (copyDiffTooltipTimer) clearTimeout(copyDiffTooltipTimer);
-      copyDiffTooltipTimer = setTimeout(() => { copyDiffTooltip = ''; }, 1500);
-    }).catch(() => {
-      copyDiffTooltip = 'Failed';
-      if (copyDiffTooltipTimer) clearTimeout(copyDiffTooltipTimer);
-      copyDiffTooltipTimer = setTimeout(() => { copyDiffTooltip = ''; }, 1500);
-    });
-  }
-
-  function formatDiff(diffText) {
-    if (!diffText) return '<div class="diff-empty">No changes or binary file</div>';
-    const lines = diffText.split('\n');
-    let html = '<div class="diff-container monospaced">';
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      let className = 'diff-line-text';
-      let escapedLine = line
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-      if (line.startsWith('+') && !line.startsWith('+++')) {
-        className = 'diff-line-add';
-      } else if (line.startsWith('-') && !line.startsWith('---')) {
-        className = 'diff-line-del';
-      } else if (line.startsWith('@@')) {
-        className = 'diff-line-chunk';
-      } else if (line.startsWith('diff --git') || line.startsWith('index') || line.startsWith('---') || line.startsWith('+++')) {
-        className = 'diff-line-header';
-      }
-      html += `<div class="diff-line ${className}">${escapedLine || '&nbsp;'}</div>`;
-    }
-    html += '</div>';
-    return html;
   }
 
   function statusLabel(status) {
@@ -600,22 +530,8 @@
             <span class="active-badge-tag margin-left-8 {selectedWorkingFile.is_staged ? 'staged-bg-tag' : 'unstaged-bg-tag'}">
               {selectedWorkingFile.is_staged ? 'staged' : 'unstaged'}
             </span>
-            <button class="btn-copy-diff" title="Copy diff code (without +/-)" on:click={() => copyDiffCode(selectedWorkingFileDiff)}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              <span>Copy</span>
-              {#if copyDiffTooltip}<span class="copy-tooltip">{copyDiffTooltip}</span>{/if}
-            </button>
           </div>
-          <div class="diff-viewer-body">
-            {#if isLoadingWorkingFileDiff}
-              <div class="loading-state-mini padding-24">
-                <div class="loading-spinner-mini"></div>
-                <span>Loading diff changes...</span>
-              </div>
-            {:else}
-              {@html formatDiff(selectedWorkingFileDiff)}
-            {/if}
-          </div>
+          <DiffView files={selectedWorkingFileDiff} loading={isLoadingWorkingFileDiff} hideFileHeader={true} />
         {:else}
           <div class="diff-viewer-empty">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>

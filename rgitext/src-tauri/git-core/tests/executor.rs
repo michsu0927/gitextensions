@@ -72,11 +72,9 @@ async fn status_log_and_diff_roundtrip() {
     git(&e, dir, &["add", "--", "with space.txt", "中文.txt"]).await;
     git(&e, dir, &["commit", "-q", "-m", "first | commit \u{2502} with separators"]).await;
 
-    let log = e
-        .run_checked(GitCommand::new(["log", "--graph", parse::LOG_FORMAT, "-n", "10"]).cwd(dir))
-        .await
-        .unwrap();
-    let commits = parse::parse_log(&log.stdout_text());
+    let (log_args, _) = git_core::revisions::log_args(&Default::default()).unwrap();
+    let log = e.run_checked(GitCommand::new(log_args).cwd(dir)).await.unwrap();
+    let commits = git_core::revisions::parse_revisions(&log.stdout_text());
     assert_eq!(commits.len(), 1);
     assert_eq!(commits[0].subject, "first | commit \u{2502} with separators");
     assert_eq!(commits[0].author, "Test User");

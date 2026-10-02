@@ -1,16 +1,5 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct CommitItem {
-    pub graph: String,
-    pub hash: String,
-    pub author: String,
-    pub email: String,
-    pub date: u64,
-    pub subject: String,
-    pub refs: Vec<String>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct GitStatus {
     pub branch: String,

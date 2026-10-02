@@ -1,11 +1,11 @@
 import { writable } from 'svelte/store';
-import type { ExpandedDirs, SelectedWorkingFile, WorkingFile } from '../lib/types';
+import type { DiffFile, ExpandedDirs, SelectedWorkingFile, WorkingFile } from '../lib/types';
 
 export const workingFiles = writable<WorkingFile[]>([]);
 export const isLoadingWorkingFiles = writable(false);
 export const workingFilesError = writable('');
 export const selectedWorkingFile = writable<SelectedWorkingFile | null>(null);
-export const selectedWorkingFileDiff = writable('');
+export const selectedWorkingFileDiff = writable<DiffFile[]>([]);
 export const isLoadingWorkingFileDiff = writable(false);
 
 // Directory tree expansion (untracked directories)

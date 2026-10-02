@@ -104,3 +104,25 @@ rgitext/
 - 編碼（`.gitattributes working-tree-encoding`、BOM、`i18n.commitEncoding`）、Windows 路徑（UNC、8.3、WSL、msys）、`index.lock`、依 git 版本判斷可用參數。
 - 設定相容：Distributed（`.gitext`）、Local、Global、Effective 四層 + git config。
 - 驗收：以 C# 專案的測試樣本做 golden test；CLI 命令清單作相容性檢查。
+
+## 8. 進度
+
+### Phase 0 — 完成
+`git-core` crate（executor / error / validate / parse）、Tauri command 拆檔、前端 TypeScript + stores + actions。
+
+### Phase 1 — 唯讀核心（進行中）
+已完成：
+- `graph.rs`：增量 lane 佈局，狀態可序列化，分頁時由前端回傳 `graph_state`，後端無狀態。
+- `revisions.rs`：分頁 `git log`（topo-order、`--decorate=full`）、scope / 搜尋 / 作者 / 路徑（可 `--follow`）/ first-parent 篩選、commit details。
+- `diff.rs`：unified diff → 結構化（hunk、行號、rename、binary、no-EOL）。
+- `blame.rs`、`tree.rs`：`blame --porcelain`、`ls-tree`、檔案內容（二進位偵測、2 MB 上限）。
+- 前端：虛擬捲動 `RevisionGrid`（Canvas 繪製圖形）、`DiffView`（inline / 並排、忽略空白、context 行數）、`CommitDetailsPanel`、`TreeBrowser` + `FileViewer`、`BlameView`、檔案歷史篩選。
+
+與原計畫的差異：
+- Diff 檢視器先用自製渲染（git 已經給出 patch，只需呈現），沒有引入 CodeMirror；CodeMirror 留到需要「編輯 / 大檔語法高亮」時（FormEditor、commit message）再導入。
+
+未完成：
+- 非 UTF-8 編碼處理（`i18n.logOutputEncoding`、`working-tree-encoding`）。
+- 左側 repo 樹點選分支 / tag 後跳到對應 commit。
+- 圖形欄寬度可調整、超過 14 條 lane 的縮排顯示。
+- Combined diff（`--cc`）顯示；目前合併 commit 以第一個 parent 為基準。

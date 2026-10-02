@@ -3,13 +3,14 @@
 
 import { get } from 'svelte/store';
 import { api } from './api';
-import type { TabName } from './types';
+import type { DiffOptions, RevisionFilter, TabName } from './types';
 
 import { activeTab, customGitPath, gitError, gitVersion, isChecking, isSavingSettings, saveGitPath, settingsError, settingsMessage, tempGitPath } from '../stores/app';
 import { currentRepoPath, gitStatus, isEditingPath, isLoadingStatus, pathError, statusError, tempRepoPath } from '../stores/repo';
 import {
-  commitFiles, commitFilesError, commits, commitsError, isLoadingCommitFileDiff, isLoadingCommitFiles,
-  isLoadingCommits, selectedCommit, selectedCommitFile, selectedCommitFileDiff,
+  commitDetails, commitDiff, commitFiles, commitFilesError, commitsError, DEFAULT_FILTER, graphState,
+  hasMoreRevisions, isLoadingCommitDetails, isLoadingCommitFileDiff, isLoadingCommitFiles, isLoadingCommits,
+  isLoadingMoreCommits, revisionFilter, revisionRows, selectedCommitFile, selectedHash,
 } from '../stores/history';
 import {
   commitFeedback, commitFeedbackError, commitMessage, expandedDirs, isCommitting, isLoadingWorkingFileDiff,
@@ -24,7 +25,6 @@ import {
 } from '../stores/branches';
 
 const DIALOG_CANCELLED = 'Dialog cancelled by user';
-const COMMIT_LOG_LIMIT = 100;
 
 const errorText = (e: unknown): string => String(e);
 const repo = (): string => get(currentRepoPath);
@@ -133,7 +133,7 @@ export async function saveRepoPath(): Promise<void> {
     if (get(activeTab) === 'history') {
       void loadCommits();
     } else {
-      commits.set([]);
+      revisionRows.set([]);
       commitsError.set('');
     }
   } catch (e) {
@@ -178,16 +178,47 @@ export function handlePathKeydown(event: KeyboardEvent): void {
 // Commit history
 // ---------------------------------------------------------------------------
 
+const PAGE_SIZE = 200;
+// Incremented for every reload so that slow, outdated responses can be discarded.
+let revisionRequestId = 0;
+
 export async function loadCommits(): Promise<void> {
+  const requestId = ++revisionRequestId;
   isLoadingCommits.set(true);
   commitsError.set('');
   try {
-    commits.set(await api.getCommitLog(repo(), COMMIT_LOG_LIMIT));
+    const page = await api.getRevisions(repo(), get(revisionFilter), 0, PAGE_SIZE, null);
+    if (requestId !== revisionRequestId) return;
+    revisionRows.set(page.rows);
+    graphState.set(page.graph_state);
+    hasMoreRevisions.set(page.has_more);
   } catch (e) {
+    if (requestId !== revisionRequestId) return;
     commitsError.set(errorText(e));
-    commits.set([]);
+    revisionRows.set([]);
+    graphState.set(null);
+    hasMoreRevisions.set(false);
   } finally {
-    isLoadingCommits.set(false);
+    if (requestId === revisionRequestId) isLoadingCommits.set(false);
+  }
+}
+
+/** Appends the next page; the graph continues from the state of the previous page. */
+export async function loadMoreCommits(): Promise<void> {
+  if (get(isLoadingCommits) || get(isLoadingMoreCommits) || !get(hasMoreRevisions)) return;
+  const requestId = revisionRequestId;
+  isLoadingMoreCommits.set(true);
+  try {
+    const rows = get(revisionRows);
+    const page = await api.getRevisions(repo(), get(revisionFilter), rows.length, PAGE_SIZE, get(graphState));
+    if (requestId !== revisionRequestId) return;
+    revisionRows.set([...rows, ...page.rows]);
+    graphState.set(page.graph_state);
+    hasMoreRevisions.set(page.has_more);
+  } catch (e) {
+    if (requestId === revisionRequestId) commitsError.set(errorText(e));
+  } finally {
+    isLoadingMoreCommits.set(false);
   }
 }
 
@@ -195,54 +226,96 @@ function reloadHistoryIfActive(): void {
   if (get(activeTab) === 'history') void loadCommits();
 }
 
-let lastLoadedCommitHash = '';
+export function setRevisionFilter(patch: Partial<RevisionFilter>): void {
+  revisionFilter.update((f) => ({ ...f, ...patch }));
+  void loadCommits();
+}
 
-async function loadCommitFiles(hash: string): Promise<void> {
-  if (hash === lastLoadedCommitHash) return;
-  lastLoadedCommitHash = hash;
-  isLoadingCommitFiles.set(true);
-  commitFilesError.set('');
-  selectedCommitFile.set('');
-  selectedCommitFileDiff.set('');
+export function resetRevisionFilter(): void {
+  revisionFilter.set({ ...DEFAULT_FILTER });
+  void loadCommits();
+}
+
+/** Restricts the history to the commits touching one file (following renames). */
+export function showFileHistory(path: string): void {
+  setRevisionFilter({ path, follow: true });
+}
+
+export function selectCommit(hash: string | null): void {
+  selectedHash.set(hash);
+}
+
+let lastLoadedHash = '';
+
+async function loadCommitDetails(hash: string): Promise<void> {
+  isLoadingCommitDetails.set(true);
   try {
-    commitFiles.set(await api.getCommitFiles(repo(), hash));
+    const details = await api.getCommitDetails(repo(), hash);
+    if (get(selectedHash) === hash) commitDetails.set(details);
   } catch (e) {
-    commitFiles.set([]);
-    commitFilesError.set(errorText(e));
+    if (get(selectedHash) === hash) commitDetails.set(null);
+    console.error('Failed to load commit details:', e);
   } finally {
-    isLoadingCommitFiles.set(false);
+    if (get(selectedHash) === hash) isLoadingCommitDetails.set(false);
   }
 }
 
-async function loadCommitFileDiff(hash: string, filePath: string): Promise<void> {
-  isLoadingCommitFileDiff.set(true);
+async function loadCommitFiles(hash: string): Promise<void> {
+  isLoadingCommitFiles.set(true);
+  commitFilesError.set('');
   try {
-    selectedCommitFileDiff.set(await api.getCommitFileDiff(repo(), hash, filePath));
+    const files = await api.getCommitFiles(repo(), hash);
+    if (get(selectedHash) !== hash) return;
+    commitFiles.set(files);
+    // Like Git Extensions: show the first file right away.
+    if (files.length > 0 && !get(selectedCommitFile)) selectedCommitFile.set(files[0].path);
   } catch (e) {
-    selectedCommitFileDiff.set(`Error loading diff: ${errorText(e)}`);
+    if (get(selectedHash) !== hash) return;
+    commitFiles.set([]);
+    commitFilesError.set(errorText(e));
   } finally {
-    isLoadingCommitFileDiff.set(false);
+    if (get(selectedHash) === hash) isLoadingCommitFiles.set(false);
   }
 }
 
 /** Reaction to the selected commit changing (wired up with `$:` in App.svelte). */
-export function onSelectedCommitChanged(hash: string | undefined): void {
-  if (hash) {
-    void loadCommitFiles(hash);
-  } else {
-    lastLoadedCommitHash = '';
+export function onSelectedHashChanged(hash: string | null): void {
+  if (!hash) {
+    lastLoadedHash = '';
+    commitDetails.set(null);
     commitFiles.set([]);
     selectedCommitFile.set('');
-    selectedCommitFileDiff.set('');
+    commitDiff.set([]);
+    return;
   }
+  if (hash === lastLoadedHash) return;
+  lastLoadedHash = hash;
+  selectedCommitFile.set('');
+  commitDiff.set([]);
+  commitFiles.set([]);
+  void loadCommitDetails(hash);
+  void loadCommitFiles(hash);
 }
 
-/** Reaction to the selected file of a commit changing. */
-export function onSelectedCommitFileChanged(hash: string | undefined, filePath: string): void {
-  if (hash && filePath) {
-    void loadCommitFileDiff(hash, filePath);
-  } else {
-    selectedCommitFileDiff.set('');
+/** Loads the diff of the selected file; also runs when the diff options change. */
+export async function onSelectedCommitFileChanged(
+  hash: string | null,
+  filePath: string,
+  options: DiffOptions,
+): Promise<void> {
+  if (!hash || !filePath) {
+    commitDiff.set([]);
+    return;
+  }
+  isLoadingCommitFileDiff.set(true);
+  try {
+    const diff = await api.getCommitDiff(repo(), hash, filePath, options);
+    if (get(selectedHash) === hash && get(selectedCommitFile) === filePath) commitDiff.set(diff);
+  } catch (e) {
+    commitDiff.set([]);
+    commitFilesError.set(`Error loading diff: ${errorText(e)}`);
+  } finally {
+    isLoadingCommitFileDiff.set(false);
   }
 }
 
@@ -263,7 +336,7 @@ export async function loadWorkingFiles(): Promise<void> {
       const stillExists = files.some((f) => f.path === selected.path && f.is_staged === selected.is_staged);
       if (!stillExists) {
         selectedWorkingFile.set(null);
-        selectedWorkingFileDiff.set('');
+        selectedWorkingFileDiff.set([]);
       }
     }
   } catch (e) {
@@ -274,23 +347,27 @@ export async function loadWorkingFiles(): Promise<void> {
   }
 }
 
-async function loadWorkingFileDiff(filePath: string, isStaged: boolean): Promise<void> {
+async function loadWorkingFileDiff(filePath: string, isStaged: boolean, options: DiffOptions): Promise<void> {
   isLoadingWorkingFileDiff.set(true);
   try {
-    selectedWorkingFileDiff.set(await api.getWorkingFileDiff(repo(), filePath, isStaged));
+    selectedWorkingFileDiff.set(await api.getWorkingDiff(repo(), filePath, isStaged, options));
   } catch (e) {
-    selectedWorkingFileDiff.set(`Error loading diff: ${errorText(e)}`);
+    selectedWorkingFileDiff.set([]);
+    workingFilesError.set(`Error loading diff: ${errorText(e)}`);
   } finally {
     isLoadingWorkingFileDiff.set(false);
   }
 }
 
-/** Reaction to the selected working file changing. */
-export function onSelectedWorkingFileChanged(file: { path: string; is_staged: boolean } | null): void {
+/** Reaction to the selected working file (or the diff options) changing. */
+export function onSelectedWorkingFileChanged(
+  file: { path: string; is_staged: boolean } | null,
+  options: DiffOptions,
+): void {
   if (file) {
-    void loadWorkingFileDiff(file.path, file.is_staged);
+    void loadWorkingFileDiff(file.path, file.is_staged, options);
   } else {
-    selectedWorkingFileDiff.set('');
+    selectedWorkingFileDiff.set([]);
   }
 }
 

@@ -2,7 +2,9 @@ use std::path::Path;
 
 use tauri::State;
 
+use super::history::{diff_flags, DiffOptions};
 use super::{in_repo, message_of, AppState, CmdResult};
+use git_core::diff::{parse_diff, DiffFile};
 use git_core::models::WorkingFile;
 use git_core::{parse, validate, GitError};
 
@@ -50,37 +52,54 @@ pub async fn get_working_dir_files(
     Ok(files)
 }
 
-#[tauri::command]
-pub async fn get_working_file_diff(
-    state: State<'_, AppState>,
-    repo_path: String,
-    file_path: String,
+/// Patch text for one working tree file: staged changes (`--cached`) or unstaged ones. Untracked
+/// files have no diff against the index, so git renders them against /dev/null instead.
+async fn working_diff_text(
+    state: &AppState,
+    repo_path: &str,
+    file: &str,
     is_staged: bool,
+    opts: &DiffOptions,
 ) -> CmdResult<String> {
-    let file = validate::rel_path(&file_path)?;
-    let mut args = vec!["diff"];
+    let mut cmd = in_repo(repo_path, ["diff"]).args(diff_flags(opts));
     if is_staged {
-        args.push("--cached");
+        cmd = cmd.arg("--cached");
     }
-    args.extend(["--", file]);
-    let out = state.git.run_checked(in_repo(&repo_path, args)).await?;
+    let out = state.git.run_checked(cmd.arg("--").arg(file)).await?;
     let diff = out.stdout_text();
     if !diff.is_empty() || is_staged {
         return Ok(diff);
     }
 
-    // Untracked files have no diff against the index: let git render one against /dev/null.
-    // (`--no-index` exits with status 1 when the files differ.)
-    if Path::new(&repo_path).join(file).is_file() {
+    // `--no-index` exits with status 1 when the files differ.
+    if Path::new(repo_path).join(file).is_file() {
         let out = state
             .git
-            .run(in_repo(&repo_path, ["diff", "--no-index", "--", "/dev/null", file]))
+            .run(
+                in_repo(repo_path, ["diff"])
+                    .args(diff_flags(opts))
+                    .args(["--no-index", "--", "/dev/null", file]),
+            )
             .await?;
         if matches!(out.code, Some(0) | Some(1)) {
             return Ok(out.stdout_text());
         }
     }
     Ok(diff)
+}
+
+/// Parsed diff of one working tree file.
+#[tauri::command]
+pub async fn get_working_diff(
+    state: State<'_, AppState>,
+    repo_path: String,
+    file_path: String,
+    is_staged: bool,
+    options: Option<DiffOptions>,
+) -> CmdResult<Vec<DiffFile>> {
+    let file = validate::rel_path(&file_path)?;
+    let text = working_diff_text(&state, &repo_path, file, is_staged, &options.unwrap_or_default()).await?;
+    Ok(parse_diff(&text))
 }
 
 fn validated_paths(file_paths: &[String]) -> CmdResult<Vec<&str>> {

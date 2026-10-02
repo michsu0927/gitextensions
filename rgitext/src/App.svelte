@@ -22,10 +22,7 @@
   import {
     currentRepoPath, gitStatus, isEditingPath, isLoadingStatus, pathError, statusError, tempRepoPath,
   } from './stores/repo';
-  import {
-    commitFiles, commitFilesError, commits, commitsError, isLoadingCommitFileDiff, isLoadingCommitFiles,
-    isLoadingCommits, selectedCommit, selectedCommitFile, selectedCommitFileDiff,
-  } from './stores/history';
+  import { diffOptions, isLoadingCommits, selectedCommitFile, selectedHash } from './stores/history';
   import {
     commitFeedback, commitFeedbackError, commitMessage, expandedDirs, isCommitting, isLoadingWorkingFileDiff,
     isLoadingWorkingFiles, selectedStagedPaths, selectedUnstagedPaths, selectedWorkingFile,
@@ -41,9 +38,9 @@
   } from './stores/branches';
 
   // Load the files/diff of whatever is selected.
-  $: actions.onSelectedCommitChanged($selectedCommit?.hash);
-  $: actions.onSelectedCommitFileChanged($selectedCommit?.hash, $selectedCommitFile);
-  $: actions.onSelectedWorkingFileChanged($selectedWorkingFile);
+  $: actions.onSelectedHashChanged($selectedHash);
+  $: void actions.onSelectedCommitFileChanged($selectedHash, $selectedCommitFile, $diffOptions);
+  $: actions.onSelectedWorkingFileChanged($selectedWorkingFile, $diffOptions);
 
   let unlistenGitLog: UnlistenFn | undefined;
 
@@ -142,19 +139,7 @@
           checkGit={actions.checkGit}
         />
       {:else if $activeTab === 'history'}
-        <CommitHistoryTab
-          commits={$commits}
-          isLoadingCommits={$isLoadingCommits}
-          commitsError={$commitsError}
-          bind:selectedCommit={$selectedCommit}
-          commitFiles={$commitFiles}
-          isLoadingCommitFiles={$isLoadingCommitFiles}
-          bind:selectedCommitFile={$selectedCommitFile}
-          bind:selectedCommitFileDiff={$selectedCommitFileDiff}
-          isLoadingCommitFileDiff={$isLoadingCommitFileDiff}
-          commitFilesError={$commitFilesError}
-          performResetBranch={actions.performResetBranch}
-        />
+        <CommitHistoryTab />
       {:else if $activeTab === 'branches'}
         <BranchesTab
           branches={$branches}
