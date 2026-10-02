@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod diag;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -18,9 +19,17 @@ fn main() {
         std::process::exit(askpass::run_client(&args));
     }
 
+    diag::install_panic_hook();
+    diag::attach_parent_console();
+    diag::log(&format!("starting rGitExt {} (pid {})", env!("CARGO_PKG_VERSION"), std::process::id()));
+
     tracing_subscriber::fmt::init();
 
-    tauri::Builder::default()
+    diag::log("building the application");
+    let result = tauri::Builder::default()
+        .on_page_load(|_webview, payload| {
+            diag::log(&format!("page load {:?}: {}", payload.event(), payload.url()));
+        })
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -33,7 +42,9 @@ fn main() {
             });
 
             // Credential prompts of git/ssh are answered through a loopback socket.
+            diag::log("setup: binding the askpass socket");
             let (listener, addr) = tauri::async_runtime::block_on(askpass::bind())?;
+            diag::log(&format!("setup: askpass listening on {}", addr));
             let token = askpass::new_token();
             app.manage(AppState {
                 git: GitExecutor::new(Some(sink)),
@@ -52,6 +63,7 @@ fn main() {
                 Box::pin(commands::network::request_secret(prompt_handle.clone(), prompt))
             });
             tauri::async_runtime::spawn(askpass::serve(listener, token, handler));
+            diag::log("setup: done");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -133,6 +145,13 @@ fn main() {
             commands::network::cancel_operation,
             commands::network::submit_askpass
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    match result {
+        Ok(()) => diag::log("exited normally"),
+        Err(e) => {
+            diag::log(&format!("the application failed: {}", e));
+            std::process::exit(1);
+        }
+    }
 }

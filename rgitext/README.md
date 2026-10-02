@@ -151,3 +151,12 @@ plan in [MIGRATION_PLAN.md](MIGRATION_PLAN.md).
 ## License
 
 [MIT](LICENSE) © 2026 rGitExt contributors
+
+## Troubleshooting
+
+- **The app closes right after starting.** The release build has no console window. It writes a
+  log to `%LOCALAPPDATA%\rGitExt\rgitext.log` (Linux: `~/.local/share/rGitExt/rgitext.log`) with
+  the startup steps and any panic. When started from a terminal (`.\rgitext.exe`) the output
+  also appears in that terminal. If no log file is created at all, the process died before
+  `main`, which usually means a missing runtime such as the WebView2 runtime or the Visual C++
+  redistributable.

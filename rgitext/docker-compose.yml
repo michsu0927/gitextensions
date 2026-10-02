@@ -1,5 +1,10 @@
 version: '3.8'
 
+# Named volumes keep the Rust build cache (dependencies, compiled crates and, for Windows, the
+# downloaded MSVC CRT / Windows SDK) between runs. Without them every `run --rm` starts from
+# scratch and takes 10-25 minutes; with them only the changed code is rebuilt.
+# Reset a cache with e.g. `podman volume rm rgitext-windows-target`.
+
 services:
   build-windows:
     build:
@@ -9,6 +14,10 @@ services:
         BUILD_PLATFORM: windows
     volumes:
       - ./dist:/app/dist
+      - rgitext-windows-target:/app/src-tauri/target
+      - rgitext-cargo-registry:/root/.cargo/registry
+      - rgitext-cargo-git:/root/.cargo/git
+      - rgitext-xwin-cache:/root/.cache/cargo-xwin
     environment:
       - TAURI_SKIP_DEPS_CHECK=true
       - BUILD_PLATFORM=windows
@@ -21,6 +30,9 @@ services:
         BUILD_PLATFORM: linux
     volumes:
       - ./dist:/app/dist
+      - rgitext-linux-target:/app/src-tauri/target
+      - rgitext-cargo-registry:/root/.cargo/registry
+      - rgitext-cargo-git:/root/.cargo/git
     environment:
       - TAURI_SKIP_DEPS_CHECK=true
       - BUILD_PLATFORM=linux
@@ -33,6 +45,17 @@ services:
         BUILD_PLATFORM: macos
     volumes:
       - ./dist:/app/dist
+      - rgitext-macos-target:/app/src-tauri/target
+      - rgitext-cargo-registry:/root/.cargo/registry
+      - rgitext-cargo-git:/root/.cargo/git
     environment:
       - TAURI_SKIP_DEPS_CHECK=true
       - BUILD_PLATFORM=macos
+
+volumes:
+  rgitext-windows-target:
+  rgitext-linux-target:
+  rgitext-macos-target:
+  rgitext-cargo-registry:
+  rgitext-cargo-git:
+  rgitext-xwin-cache:
