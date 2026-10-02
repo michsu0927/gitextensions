@@ -177,7 +177,8 @@ where
 {
     let mut all = Vec::new();
     let mut pending: Vec<u8> = Vec::new();
-    let mut buf = [0u8; 4096];
+    // On the heap: a stack array would be part of the (large) future that holds it.
+    let mut buf = vec![0u8; 4096];
     let emit = |bytes: &[u8]| {
         let text = String::from_utf8_lossy(bytes);
         let text = text.trim();
@@ -366,13 +367,15 @@ impl GitExecutor {
 
     /// Runs git and returns its output regardless of the exit status.
     pub async fn run(&self, cmd: GitCommand) -> Result<GitOutput, GitError> {
-        self.run_inner(cmd, None).await
+        // Boxed on purpose: the full future is ~19 KB and every command future would embed it, which
+        // adds up to more than the 1 MB main-thread stack of a Windows program.
+        Box::pin(self.run_inner(cmd, None)).await
     }
 
     /// Like [`run`](Self::run), but reports every line git prints (progress included) to
     /// `stream.sink` while the command is running, and can be cancelled.
     pub async fn run_streaming(&self, cmd: GitCommand, stream: Stream) -> Result<GitOutput, GitError> {
-        self.run_inner(cmd, Some(&stream)).await
+        Box::pin(self.run_inner(cmd, Some(&stream))).await
     }
 
     /// Streaming variant of [`run_checked`](Self::run_checked).
@@ -481,7 +484,7 @@ impl GitExecutor {
         }
 
         if let Some(stream) = stream {
-            return stream_output(child, cmd, stream).await;
+            return Box::pin(stream_output(child, cmd, stream)).await;
         }
 
         let output = tokio::time::timeout(cmd.timeout, child.wait_with_output())
@@ -494,5 +497,34 @@ impl GitExecutor {
             stdout: output.stdout,
             stderr: output.stderr,
         })
+    }
+}
+
+#[cfg(test)]
+mod size_guard {
+    use super::*;
+
+    /// The futures of the executor end up on the stack of whichever thread creates them. The
+    /// Tauri command dispatcher creates one per command on the main thread, and a Windows main
+    /// thread only has 1 MB. Un-boxed they were ~19 KB each, ~95 commands overflowed it.
+    /// Debug builds have much larger futures, so the limit is only checked in release mode
+    /// (`cargo test --release`).
+    #[test]
+    fn executor_futures_stay_small() {
+        let e = GitExecutor::new(None);
+        let cmd = || GitCommand::new(["status"]);
+        let stream = Stream { sink: Arc::new(|_| {}), cancel: None };
+        let sizes = [
+            ("run", std::mem::size_of_val(&e.run(cmd()))),
+            ("run_checked", std::mem::size_of_val(&e.run_checked(cmd()))),
+            ("version", std::mem::size_of_val(&e.version(None))),
+            ("run_streaming_checked", std::mem::size_of_val(&e.run_streaming_checked(cmd(), stream))),
+        ];
+        for (name, size) in sizes {
+            println!("future size {:<22} {} bytes", name, size);
+            if !cfg!(debug_assertions) {
+                assert!(size < 4096, "the future of `{}` is {} bytes: box it", name, size);
+            }
+        }
     }
 }

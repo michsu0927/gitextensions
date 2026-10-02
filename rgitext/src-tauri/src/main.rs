@@ -25,6 +25,16 @@ fn main() {
 
     tracing_subscriber::fmt::init();
 
+    // Commands run on the threads of this runtime; give them room for deep call stacks.
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .build()
+    {
+        Ok(runtime) => tauri::async_runtime::set(runtime),
+        Err(e) => diag::log(&format!("could not create the async runtime ({}), using the default", e)),
+    }
+
     diag::log("building the application");
     let result = tauri::Builder::default()
         .on_page_load(|_webview, payload| {
