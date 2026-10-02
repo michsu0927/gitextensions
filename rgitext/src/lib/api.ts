@@ -1,7 +1,8 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { beginLog, finishLog } from '../stores/consoleLog';
 import type {
-  BlameLine, CommitDetails, CommitFile, CommitOptions, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
+  BlameLine, BranchInfo, CommitDetails, CommitFile, CommitOptions, ControlAction, LocalChangesMode, MergeOptions,
+  PickOptions, RepoState, TagInfo, TodoCandidate, TodoItem, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
   GitStatus, GraphState, HunkSelection, RevisionFilter, RevisionPage, SelectionAction, StashEntry, TreeEntry,
   WorkingFile,
 } from './types';
@@ -91,23 +92,51 @@ export const api = {
 
   // branches
   getBranches: (repoPath: string) => call<string[]>('get_git_branches', { repoPath }),
-  checkoutBranch: (repoPath: string, branchName: string) =>
-    call<string>('checkout_branch', { repoPath, branchName }),
-  mergeBranch: (repoPath: string, branchName: string) =>
-    call<string>('merge_branch', { repoPath, branchName }),
-  rebaseBranch: (repoPath: string, branchName: string) =>
-    call<string>('rebase_branch', { repoPath, branchName }),
-  createBranch: (repoPath: string, newBranchName: string) =>
-    call<string>('create_branch', { repoPath, newBranchName }),
+  listBranches: (repoPath: string) => call<BranchInfo[]>('list_branches', { repoPath }),
+  checkoutBranch: (repoPath: string, branchName: string, localChanges?: LocalChangesMode) =>
+    call<string>('checkout_branch', { repoPath, branchName, options: { localChanges } }),
+  mergeBranch: (repoPath: string, branchName: string, options?: MergeOptions) =>
+    call<string>('merge_branch', { repoPath, branchName, options }),
+  rebaseBranch: (repoPath: string, branchName: string, autostash = false) =>
+    call<string>('rebase_branch', { repoPath, branchName, options: { autostash } }),
+  createBranch: (repoPath: string, newBranchName: string, startPoint?: string, checkout = false) =>
+    call<string>('create_branch', { repoPath, newBranchName, startPoint, checkout }),
   resetCurrentBranch: (repoPath: string, target: string, mode: string) =>
     call<string>('reset_current_branch', { repoPath, target, mode }),
   renameBranch: (repoPath: string, oldName: string, newName: string) =>
     call<string>('rename_branch', { repoPath, oldName, newName }),
   deleteBranch: (repoPath: string, branchName: string, force: boolean) =>
     call<string>('delete_branch', { repoPath, branchName, force }),
+  setUpstream: (repoPath: string, branchName: string, upstream: string | null) =>
+    call<string>('set_upstream', { repoPath, branchName, upstream }),
+
+  // in-progress operations, cherry-pick, revert, interactive rebase
+  getRepoState: (repoPath: string) => call<RepoState>('get_repo_state', { repoPath }),
+  operationControl: (repoPath: string, action: ControlAction) =>
+    call<string>('operation_control', { repoPath, action }),
+  cherryPick: (repoPath: string, commits: string[], options?: PickOptions) =>
+    call<string>('cherry_pick', { repoPath, commits, options }),
+  revertCommits: (repoPath: string, commits: string[], options?: PickOptions) =>
+    call<string>('revert_commits', { repoPath, commits, options }),
+  getRebaseTodo: (repoPath: string, onto: string) =>
+    call<TodoCandidate[]>('get_rebase_todo', { repoPath, onto }),
+  rebaseInteractive: (repoPath: string, onto: string, items: TodoItem[], autostash = false) =>
+    call<string>('rebase_interactive', { repoPath, onto, items, autostash }),
 
   // tags, stashes
   getTags: (repoPath: string) => call<string[]>('get_git_tags', { repoPath }),
+  listTags: (repoPath: string) => call<TagInfo[]>('list_tags', { repoPath }),
+  createTag: (
+    repoPath: string,
+    name: string,
+    target?: string,
+    message?: string,
+    sign = false,
+    force = false,
+  ) => call<string>('create_tag', { repoPath, name, target, message, sign, force }),
+  deleteTag: (repoPath: string, name: string) => call<string>('delete_tag', { repoPath, name }),
+  deleteRemoteRef: (repoPath: string, remote: string, kind: 'branch' | 'tag', name: string) =>
+    call<string>('delete_remote_ref', { repoPath, remote, kind, name }),
   getStashes: (repoPath: string) => call<string[]>('get_git_stashes', { repoPath }),
   listStashes: (repoPath: string) => call<StashEntry[]>('list_stashes', { repoPath }),
   stashSave: (repoPath: string, message: string | null, includeUntracked: boolean, keepIndex: boolean) =>

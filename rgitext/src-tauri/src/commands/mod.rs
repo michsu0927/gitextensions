@@ -1,5 +1,6 @@
 pub mod branch;
 pub mod history;
+pub mod ops;
 pub mod remote;
 pub mod repo;
 pub mod stash;

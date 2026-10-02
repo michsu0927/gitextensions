@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import * as actions from '../lib/actions';
+  import * as ops from '../lib/operations';
   import { copyText, shortHash } from '../lib/format';
   import type { RevisionRow } from '../lib/types';
   import { currentRepoPath } from '../stores/repo';
@@ -60,7 +61,7 @@
   function openContextMenu(event: MouseEvent, row: RevisionRow): void {
     menuRow = row;
     menuX = Math.min(event.clientX, window.innerWidth - 260);
-    menuY = Math.min(event.clientY, window.innerHeight - 140);
+    menuY = Math.max(8, Math.min(event.clientY, window.innerHeight - 420));
   }
 
   function closeMenu(): void {
@@ -72,31 +73,15 @@
     closeMenu();
   }
 
-  function menuCheckout(): void {
-    if (!menuRow) return;
-    const hash = menuRow.hash;
+  /** Runs a menu entry: closes the menu first, then calls the operation with the row. */
+  function menuDo(run: (row: RevisionRow) => void): void {
+    const row = menuRow;
     closeMenu();
-    if (confirm(`Check out commit ${shortHash(hash)}? This leaves you in a detached HEAD state.`)) {
-      void actions.performCheckout(hash);
-    }
+    if (row) run(row);
   }
 
-  function menuReset(): void {
-    if (!menuRow) return;
-    const hash = menuRow.hash;
-    closeMenu();
-    const mode = prompt(
-      `Reset current branch to ${shortHash(hash)}?\n\nEnter mode: 'hard', 'mixed', or 'soft':`,
-      'mixed',
-    );
-    const normalized = mode?.toLowerCase().trim();
-    if (normalized && ['hard', 'mixed', 'soft'].includes(normalized)) {
-      void actions.performResetBranch(hash, normalized);
-    } else if (mode) {
-      alert("Invalid mode! Please enter 'hard', 'mixed', or 'soft'.");
-    }
-  }
-
+  $: menuBranches = menuRow ? menuRow.refs.filter((r) => r.kind === 'head' && !r.is_head) : [];
+  $: menuTags = menuRow ? menuRow.refs.filter((r) => r.kind === 'tag') : [];
   function showBlame(path: string): void {
     blamePath = path;
     tab = 'blame';
@@ -281,8 +266,29 @@
     <div class="hist-menu shadow-premium" style="left: {menuX}px; top: {menuY}px">
       <div class="hist-menu-header">Commit {shortHash(menuRow.hash)}</div>
       <button class="dropdown-item" on:click={menuCopyHash}><span>Copy commit hash</span></button>
-      <button class="dropdown-item" on:click={menuCheckout}><span>Check out this commit…</span></button>
-      <button class="dropdown-item" on:click={menuReset}><span>Reset current branch to here…</span></button>
+      <div class="hist-menu-sep"></div>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.createBranchAt(r.hash))}><span>Create branch here…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.createTagAt(r.hash))}><span>Create tag here…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.checkoutRevision(r.hash, shortHash(r.hash)))}><span>Check out this commit…</span></button>
+      {#each menuBranches as ref}
+        <button class="dropdown-item" on:click={() => menuDo(() => ops.checkoutRevision(ref.name))}><span>Check out branch {ref.name}</span></button>
+      {/each}
+      <div class="hist-menu-sep"></div>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.mergeInto(r.hash))}><span>Merge into current branch…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.rebaseOnto(r.hash))}><span>Rebase current branch onto this…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.interactiveRebaseOnto(r.hash))}><span>Interactive rebase onto this…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.cherryPick(r))}><span>Cherry-pick…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.revertCommit(r))}><span>Revert…</span></button>
+      <button class="dropdown-item" on:click={() => menuDo((r) => ops.resetTo(r.hash))}><span>Reset current branch to here…</span></button>
+      {#if menuBranches.length > 0 || menuTags.length > 0}
+        <div class="hist-menu-sep"></div>
+      {/if}
+      {#each menuBranches as ref}
+        <button class="dropdown-item danger" on:click={() => menuDo(() => ops.deleteLocalBranch(ref.name))}><span>Delete branch {ref.name}…</span></button>
+      {/each}
+      {#each menuTags as ref}
+        <button class="dropdown-item danger" on:click={() => menuDo(() => ops.deleteTagByName(ref.name))}><span>Delete tag {ref.name}…</span></button>
+      {/each}
     </div>
   {/if}
 </div>
@@ -468,11 +474,21 @@
   .hist-menu {
     position: fixed;
     z-index: 1000;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
     min-width: 240px;
     padding: 4px 0;
     background: #1e293b;
     border: 1px solid #334155;
     border-radius: 8px;
+  }
+  .hist-menu-sep {
+    height: 1px;
+    margin: 4px 0;
+    background: #334155;
+  }
+  .hist-menu :global(.dropdown-item.danger) {
+    color: #fca5a5;
   }
   .hist-menu-header {
     padding: 6px 14px;

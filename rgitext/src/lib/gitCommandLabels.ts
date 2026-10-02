@@ -37,6 +37,30 @@ export function getRawGitCommand(cmd: string, args: Args): string[] {
       return ['git branch --format="%(refname:short)"'];
     case 'get_git_tags':
       return ['git tag'];
+    case 'get_repo_state':
+      return ['git rev-parse --absolute-git-dir', 'git diff --name-only --diff-filter=U -z'];
+    case 'operation_control':
+      return ['git <merge|rebase|cherry-pick|revert> --' + str(args.action)];
+    case 'list_branches':
+      return ['git for-each-ref refs/heads'];
+    case 'list_tags':
+      return ['git for-each-ref refs/tags'];
+    case 'create_tag':
+      return ['git tag ' + str(args.name) + (args.target ? ' ' + str(args.target) : '')];
+    case 'delete_tag':
+      return ['git tag -d ' + str(args.name)];
+    case 'delete_remote_ref':
+      return ['git push ' + str(args.remote) + ' --delete ' + str(args.name)];
+    case 'cherry_pick':
+      return ['git cherry-pick ' + (Array.isArray(args.commits) ? args.commits.join(' ') : '')];
+    case 'revert_commits':
+      return ['git revert --no-edit ' + (Array.isArray(args.commits) ? args.commits.join(' ') : '')];
+    case 'get_rebase_todo':
+      return ['git log --reverse --no-merges ' + str(args.onto) + '..HEAD'];
+    case 'rebase_interactive':
+      return ['git rebase -i ' + str(args.onto) + ' (todo supplied by rGitExt)'];
+    case 'set_upstream':
+      return ['git branch --set-upstream-to ' + str(args.upstream) + ' ' + str(args.branchName)];
     case 'list_stashes':
       return ['git stash list -z'];
     case 'stash_save':

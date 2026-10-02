@@ -6,6 +6,7 @@ import { api } from './api';
 import type { DiffOptions, DiscardTarget, HunkSelection, RevisionFilter, SelectionAction, TabName } from './types';
 
 import { activeTab, customGitPath, gitError, gitVersion, isChecking, isSavingSettings, saveGitPath, settingsError, settingsMessage, tempGitPath } from '../stores/app';
+import { repoState } from '../stores/ops';
 import { currentRepoPath, gitStatus, isEditingPath, isLoadingStatus, pathError, statusError, tempRepoPath } from '../stores/repo';
 import {
   commitDetails, commitDiff, commitFiles, commitFilesError, commitsError, DEFAULT_FILTER, diffOptions, graphState,
@@ -92,6 +93,19 @@ export async function browseGitExecutable(): Promise<void> {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// In-progress operation (merge / rebase / cherry-pick / revert)
+// ---------------------------------------------------------------------------
+
+export async function loadRepoState(): Promise<void> {
+  try {
+    repoState.set(await api.getRepoState(repo()));
+  } catch {
+    // Not a repository (yet): nothing is in progress.
+    repoState.set({ operation: null, conflicted: [] });
+  }
+}
 // ---------------------------------------------------------------------------
 // Repository / status
 // ---------------------------------------------------------------------------
@@ -107,6 +121,8 @@ export async function loadGitStatus(): Promise<void> {
   } finally {
     isLoadingStatus.set(false);
   }
+  // Almost every operation ends with a status reload: keep the "in progress" banner in sync.
+  void loadRepoState();
 }
 
 export async function saveRepoPath(): Promise<void> {
@@ -889,4 +905,22 @@ export async function initialize(): Promise<void> {
   void loadRemoteBranches();
   void loadWorkingFiles();
   void loadStashEntries();
+}
+
+// ---------------------------------------------------------------------------
+// Window focus
+// ---------------------------------------------------------------------------
+
+let lastFocusRefresh = 0;
+const FOCUS_REFRESH_MIN_INTERVAL_MS = 2000;
+
+/** Picks up changes made outside of the app (editor, terminal) when the window regains focus. */
+export function refreshOnFocus(): void {
+  const now = Date.now();
+  if (!repo() || now - lastFocusRefresh < FOCUS_REFRESH_MIN_INTERVAL_MS) return;
+  lastFocusRefresh = now;
+  void loadGitStatus();
+  const tab = get(activeTab);
+  if (tab === 'commit') void loadWorkingFiles();
+  else if (tab === 'history') void loadCommits();
 }

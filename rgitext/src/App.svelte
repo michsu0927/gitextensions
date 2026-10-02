@@ -11,6 +11,9 @@
   import CommitTab from './components/CommitTab.svelte';
   import SettingsTab from './components/SettingsTab.svelte';
   import ConsoleLogDrawer from './components/ConsoleLogDrawer.svelte';
+  import ModalDialog from './components/ModalDialog.svelte';
+  import OperationBanner from './components/OperationBanner.svelte';
+  import RebaseTodoDialog from './components/RebaseTodoDialog.svelte';
 
   import * as actions from './lib/actions';
   import {
@@ -42,12 +45,14 @@
   let unlistenGitLog: UnlistenFn | undefined;
 
   onMount(async () => {
+    window.addEventListener('focus', actions.refreshOnFocus);
     // Listen to git command logs first so the initial load is captured too.
     unlistenGitLog = await startGitLogListener();
     await actions.initialize();
   });
 
   onDestroy(() => {
+    window.removeEventListener('focus', actions.refreshOnFocus);
     unlistenGitLog?.();
   });
 </script>
@@ -116,6 +121,8 @@
       handlePathKeydown={actions.handlePathKeydown}
     />
 
+    <OperationBanner />
+
     {#if $pathError}
       <div class="path-error-banner">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -183,3 +190,6 @@
     />
   </main>
 </div>
+
+<ModalDialog />
+<RebaseTodoDialog />

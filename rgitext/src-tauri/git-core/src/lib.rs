@@ -10,6 +10,8 @@ pub mod graph;
 pub mod models;
 pub mod parse;
 pub mod patch;
+pub mod refs;
+pub mod repo_state;
 pub mod revisions;
 pub mod tree;
 pub mod validate;

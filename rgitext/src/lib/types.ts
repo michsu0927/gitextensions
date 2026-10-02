@@ -218,3 +218,63 @@ export interface DiscardTarget {
 }
 
 export type SelectionAction = 'stage' | 'unstage' | 'discard';
+
+// ---------------------------------------------------------------------------
+// Branches, tags, operations (Phase 2b)
+// ---------------------------------------------------------------------------
+
+export type OperationKind = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'bisect';
+
+export interface RepoState {
+  operation: OperationKind | null;
+  conflicted: string[];
+}
+
+export type ControlAction = 'continue' | 'skip' | 'abort';
+
+export interface BranchInfo {
+  name: string;
+  is_current: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  gone: boolean;
+  hash: string;
+  date: number;
+  subject: string;
+}
+
+export interface TagInfo {
+  name: string;
+  annotated: boolean;
+  hash: string;
+  date: number;
+  message: string;
+}
+
+export interface TodoCandidate {
+  hash: string;
+  subject: string;
+}
+
+export type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop';
+
+export interface TodoItem {
+  action: RebaseAction;
+  hash: string;
+  message?: string;
+}
+
+export interface MergeOptions {
+  strategy?: 'default' | 'no-ff' | 'ff-only' | 'squash';
+  noCommit?: boolean;
+  message?: string;
+}
+
+export interface PickOptions {
+  recordOrigin?: boolean;
+  noCommit?: boolean;
+  mainline?: number;
+}
+
+export type LocalChangesMode = 'keep' | 'merge' | 'reset' | 'stash';
