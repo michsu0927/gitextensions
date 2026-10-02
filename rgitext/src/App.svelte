@@ -13,6 +13,7 @@
   import ConsoleLogDrawer from './components/ConsoleLogDrawer.svelte';
   import ModalDialog from './components/ModalDialog.svelte';
   import OperationBanner from './components/OperationBanner.svelte';
+  import ConflictResolver from './components/ConflictResolver.svelte';
   import RebaseTodoDialog from './components/RebaseTodoDialog.svelte';
   import RemotesDialog from './components/RemotesDialog.svelte';
   import SyncBar from './components/SyncBar.svelte';
@@ -205,3 +206,4 @@
 <ModalDialog />
 <RebaseTodoDialog />
 <RemotesDialog />
+<ConflictResolver />

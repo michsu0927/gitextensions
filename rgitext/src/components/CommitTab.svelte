@@ -3,6 +3,7 @@
   import { formatRelative } from '../lib/format';
   import type { HunkSelection, WorkingFile } from '../lib/types';
   import { gitStatus } from '../stores/repo';
+  import { conflictsDialogOpen, repoState } from '../stores/ops';
   import { diffOptions } from '../stores/history';
   import {
     amendCommit, commitFeedback, commitFeedbackError, commitMessage, isCommitting, isLoadingWorkingFileDiff,
@@ -108,6 +109,12 @@
 
 <div class="ct">
   <div class="ct-left">
+    {#if $repoState.conflicted.length > 0}
+      <div class="ct-conflict">
+        <span>{$repoState.conflicted.length} file{$repoState.conflicted.length === 1 ? '' : 's'} with merge conflicts</span>
+        <button on:click={() => ($conflictsDialogOpen = true)}>Resolve…</button>
+      </div>
+    {/if}
     <section class="ct-section">
       <header class="ct-section-header">
         <input
@@ -322,6 +329,19 @@
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 12px;
     overflow: hidden;
+  }
+  .ct-conflict {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(234, 179, 8, 0.12);
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    color: #fde68a;
+    font-size: 0.8rem;
+    flex-shrink: 0;
   }
   .ct-section {
     display: flex;

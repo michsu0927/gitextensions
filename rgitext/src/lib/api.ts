@@ -3,7 +3,7 @@ import { beginLog, finishLog } from '../stores/consoleLog';
 import type {
   BlameLine, BranchInfo, CommitDetails, CommitFile, CommitOptions, ControlAction, LocalChangesMode, MergeOptions,
   PickOptions, RepoState, TagInfo, TodoCandidate, TodoItem, CloneOptions, FetchOptions, PullOptions, PushOptions,
-  RemoteInfo, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
+  RemoteInfo, ConflictFile, ConflictVersions, Resolution, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
   GitStatus, GraphState, HunkSelection, RevisionFilter, RevisionPage, SelectionAction, StashEntry, TreeEntry,
   WorkingFile,
 } from './types';
@@ -110,6 +110,15 @@ export const api = {
     call<string>('delete_branch', { repoPath, branchName, force }),
   setUpstream: (repoPath: string, branchName: string, upstream: string | null) =>
     call<string>('set_upstream', { repoPath, branchName, upstream }),
+
+  // conflicts
+  getConflicts: (repoPath: string) => call<ConflictFile[]>('get_conflicts', { repoPath }),
+  getConflictVersions: (repoPath: string, filePath: string) =>
+    call<ConflictVersions>('get_conflict_versions', { repoPath, filePath }),
+  resolveConflict: (repoPath: string, filePath: string, resolution: Resolution, content?: string) =>
+    call<string>('resolve_conflict', { repoPath, filePath, resolution, content }),
+  runMergetool: (repoPath: string, filePath: string, tool?: string) =>
+    call<string>('run_mergetool', { repoPath, filePath, tool }),
 
   // in-progress operations, cherry-pick, revert, interactive rebase
   getRepoState: (repoPath: string) => call<RepoState>('get_repo_state', { repoPath }),

@@ -327,3 +327,32 @@ export interface ProgressState {
   title: string;
   lines: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Conflict resolution (Phase 2d)
+// ---------------------------------------------------------------------------
+
+export type ConflictKind =
+  | 'both-modified'
+  | 'both-added'
+  | 'both-deleted'
+  | 'added-by-us'
+  | 'added-by-them'
+  | 'deleted-by-us'
+  | 'deleted-by-them';
+
+export interface ConflictFile {
+  path: string;
+  kind: ConflictKind;
+}
+
+export interface ConflictVersions {
+  base: string | null;
+  ours: string | null;
+  theirs: string | null;
+  merged: string | null;
+  is_binary: boolean;
+  operation: OperationKind | null;
+}
+
+export type Resolution = 'ours' | 'theirs' | 'merged' | 'delete';

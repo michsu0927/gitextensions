@@ -3,6 +3,7 @@
 //! This crate has no Tauri dependency so that it can be unit-tested on its own.
 
 pub mod askpass;
+pub mod conflicts;
 pub mod blame;
 pub mod diff;
 pub mod error;

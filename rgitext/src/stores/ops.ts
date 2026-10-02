@@ -17,3 +17,6 @@ export const progress = writable<import('../lib/types').ProgressState | null>(nu
 
 /** Whether the remotes manager is open. */
 export const remotesDialogOpen = writable(false);
+
+/** Whether the conflict resolver is open. */
+export const conflictsDialogOpen = writable(false);

@@ -133,7 +133,8 @@ rgitext/
 - 2b 分支與歷史操作：branch / tag 建立與刪除、checkout（含本地變更處理與自動 stash）、merge（策略）、rebase、互動式 rebase（todo 由 rGitExt 提供，`reword` 以 `exec git commit --amend` 表達）、cherry-pick、revert、reset、進行中操作偵測與 continue / skip / abort。
 - 2c 網路操作：fetch / pull / push / clone / init，進度串流與取消、remote 管理；認證以 askpass（`GIT_ASKPASS` / `SSH_ASKPASS` 指向本程式，經 loopback socket + token 回到 GUI）處理，HTTPS 另可由 Git Credential Manager 自己的視窗處理。
 
-未完成（2d）：
-- 衝突解決（三向）與 mergetool / difftool。
+未完成：
+- difftool、衝突解決的並排三向編輯器（目前為逐衝突區塊選擇 + 手動編輯）。
 - 多選 commit 的 cherry-pick / revert、submodule、worktree、bisect。
 - askpass 在 Windows GUI 子系統下的 stdout 行為只在 Linux 上以協定層測試過，需要在 Windows 實機驗證。
+- 2d 衝突解決：衝突檔案清單（both-modified / added / deleted by us|them…）、base / ours / theirs 版本、逐衝突區塊選擇（ours / theirs / both，支援 diff3）、整檔 ours / theirs、手動編輯結果、刪除檔案、外部 merge tool；rebase 時 ours / theirs 的語意會在介面上標明。

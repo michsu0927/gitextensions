@@ -1,8 +1,7 @@
 <script lang="ts">
   import { controlOperation, dismissOperationResult } from '../lib/operations';
   import type { OperationKind } from '../lib/types';
-  import { opBusy, opError, opMessage, repoState } from '../stores/ops';
-  import { selectTab } from '../lib/actions';
+  import { conflictsDialogOpen, opBusy, opError, opMessage, repoState } from '../stores/ops';
 
   const TITLES: Record<OperationKind, string> = {
     merge: 'Merge in progress',
@@ -24,14 +23,16 @@
       <strong>{TITLES[op]}</strong>
       {#if conflicts > 0}
         <span>
-          · {conflicts} file{conflicts === 1 ? '' : 's'} with conflicts. Resolve them in the
-          <button class="ob-link" on:click={() => selectTab('commit')}>Commit tab</button>, stage the result, then continue.
+          · {conflicts} file{conflicts === 1 ? '' : 's'} with conflicts. Resolve them, then continue.
         </span>
       {:else if canContinue}
         <span>· No conflicts left. Continue to finish.</span>
       {/if}
     </div>
     <div class="ob-actions">
+      {#if conflicts > 0}
+        <button class="primary" on:click={() => ($conflictsDialogOpen = true)}>Resolve conflicts…</button>
+      {/if}
       {#if canContinue}
         <button disabled={$opBusy} on:click={() => controlOperation('continue')}>Continue</button>
       {/if}
@@ -93,8 +94,7 @@
     display: flex;
     gap: 8px;
   }
-  .ob-actions button,
-  .ob-link {
+  .ob-actions button {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 6px;
@@ -103,12 +103,11 @@
     font-size: 0.78rem;
     cursor: pointer;
   }
-  .ob-link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: #fb923c;
-    text-decoration: underline;
+  .ob-actions button.primary {
+    background: #ea580c;
+    border-color: #ea580c;
+    color: #fff;
+    font-weight: 600;
   }
   .ob-actions button.danger {
     border-color: rgba(239, 68, 68, 0.5);

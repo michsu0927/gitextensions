@@ -1,4 +1,5 @@
 pub mod branch;
+pub mod conflicts;
 pub mod history;
 pub mod network;
 pub mod ops;
