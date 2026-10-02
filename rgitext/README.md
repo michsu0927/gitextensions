@@ -67,21 +67,59 @@ Design decisions:
 
 ## Build and run
 
+### Local toolchain
+
 ```sh
 npm install
-npm run tauri dev        # development
-npm run tauri build      # release build
+npm run tauri dev        # development (hot reload, incremental builds)
+npm run tauri build      # release build for the current platform
 ```
 
-### Build with containers (Windows target from Linux/WSL, or without a local toolchain)
+### Containers (no local Rust / Node needed)
+
+Podman or Docker builds the app inside an Ubuntu image (`Dockerfile`, driven by `build.sh`) and
+writes the results to `dist/`. Run the commands from the `rgitext/` folder. Replace `podman` with
+`docker` if you use Docker.
+
+**Windows** (cross-compiled from Linux with `cargo-xwin`; produces `dist/rgitext.exe` and
+`dist/nsis/rgitext_*_x64-setup.exe`, unsigned):
 
 ```sh
-podman compose build build-windows      # or: docker compose ...
-podman compose run --rm build-windows   # writes dist/rgitext.exe and dist/nsis/*-setup.exe
+podman compose build build-windows
+podman compose run --rm build-windows
 ```
 
-`build-linux` and `build-macos` services exist as well (macOS cross-compilation has limits and
-cannot sign or notarize).
+**Linux** (native build; produces `dist/rgitext` plus the bundles Tauri creates, e.g.
+`dist/deb/*.deb`, `dist/appimage/*.AppImage`):
+
+```sh
+podman compose build build-linux
+podman compose run --rm build-linux
+```
+
+**macOS** (experimental cross-compilation with `cargo-zigbuild`; cannot sign or notarize, use a
+macOS runner for real releases):
+
+```sh
+podman compose build build-macos
+podman compose run --rm build-macos
+```
+
+Equivalent without compose, for example for Windows:
+
+```sh
+podman build --build-arg BUILD_PLATFORM=windows -t rgitext-build-windows .
+podman run --rm -e BUILD_PLATFORM=windows -v ./dist:/app/dist rgitext-build-windows
+```
+
+Notes:
+
+- The first build is slow (10–25 minutes): the Rust dependencies and, for Windows, the MSVC CRT /
+  Windows SDK are downloaded and compiled from scratch, and `run --rm` throws the build cache away
+  afterwards. For day-to-day work use `npm run tauri dev` with a local toolchain, and
+  `cargo check` / `cargo test` for quick verification.
+- A Linux build cannot be run on Windows, and the other way around: build for the platform you
+  want to test on.
 
 ## Tests and checks
 
