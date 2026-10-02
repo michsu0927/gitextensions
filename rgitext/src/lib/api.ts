@@ -1,8 +1,9 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { beginLog, finishLog } from '../stores/consoleLog';
 import type {
-  BlameLine, CommitDetails, CommitFile, DiffFile, DiffOptions, DirEntry, FileContent, GitStatus, GraphState,
-  RevisionFilter, RevisionPage, TreeEntry, WorkingFile,
+  BlameLine, CommitDetails, CommitFile, CommitOptions, DiffFile, DiffOptions, DirEntry, DiscardTarget, FileContent,
+  GitStatus, GraphState, HunkSelection, RevisionFilter, RevisionPage, SelectionAction, StashEntry, TreeEntry,
+  WorkingFile,
 } from './types';
 
 type Args = Record<string, unknown>;
@@ -71,8 +72,22 @@ export const api = {
     call<string>('stage_files', { repoPath, filePaths }),
   unstageFiles: (repoPath: string, filePaths: string[]) =>
     call<string>('unstage_files', { repoPath, filePaths }),
-  commitChanges: (repoPath: string, message: string) =>
-    call<string>('commit_changes', { repoPath, message }),
+  commitChanges: (repoPath: string, message: string, options: Partial<CommitOptions>) =>
+    call<string>('commit_changes', { repoPath, message, options }),
+  getCommitTemplate: (repoPath: string) => call<string | null>('get_commit_template', { repoPath }),
+  getLastCommitMessage: (repoPath: string) => call<string>('get_last_commit_message', { repoPath }),
+  stageAll: (repoPath: string) => call<string>('stage_all', { repoPath }),
+  unstageAll: (repoPath: string) => call<string>('unstage_all', { repoPath }),
+  discardChanges: (repoPath: string, targets: DiscardTarget[]) =>
+    call<string>('discard_changes', { repoPath, targets }),
+  applySelection: (
+    repoPath: string,
+    filePath: string,
+    action: SelectionAction,
+    selections: HunkSelection[],
+    untracked: boolean,
+    options: DiffOptions,
+  ) => call<string>('apply_selection', { repoPath, filePath, action, selections, untracked, options }),
 
   // branches
   getBranches: (repoPath: string) => call<string[]>('get_git_branches', { repoPath }),
@@ -94,8 +109,13 @@ export const api = {
   // tags, stashes
   getTags: (repoPath: string) => call<string[]>('get_git_tags', { repoPath }),
   getStashes: (repoPath: string) => call<string[]>('get_git_stashes', { repoPath }),
+  listStashes: (repoPath: string) => call<StashEntry[]>('list_stashes', { repoPath }),
+  stashSave: (repoPath: string, message: string | null, includeUntracked: boolean, keepIndex: boolean) =>
+    call<string>('stash_save', { repoPath, message, includeUntracked, keepIndex }),
   applyStash: (repoPath: string, stashIndex: number) =>
     call<string>('apply_stash', { repoPath, stashIndex }),
+  popStash: (repoPath: string, stashIndex: number) => call<string>('stash_pop', { repoPath, stashIndex }),
+  dropStash: (repoPath: string, stashIndex: number) => call<string>('stash_drop', { repoPath, stashIndex }),
 
   // remotes
   getRemotes: (repoPath: string) => call<string[]>('get_git_remotes', { repoPath }),

@@ -9,6 +9,7 @@ pub mod executor;
 pub mod graph;
 pub mod models;
 pub mod parse;
+pub mod patch;
 pub mod revisions;
 pub mod tree;
 pub mod validate;

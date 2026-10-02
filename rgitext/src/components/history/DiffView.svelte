@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DiffFile, DiffHunk, DiffLine } from '../../lib/types';
+  import type { DiffFile, DiffHunk, DiffLine, HunkSelection } from '../../lib/types';
   import { copyText } from '../../lib/format';
   import { diffMode, diffOptions } from '../../stores/history';
 
@@ -7,6 +7,17 @@
   export let loading = false;
   /** Hide the per-file header when the caller already shows the file name. */
   export let hideFileHeader = false;
+  /**
+   * Actions that can be applied to single hunks or selected lines (stage, unstage, discard).
+   * When given, the diff is shown inline with a checkbox in front of every changed line.
+   */
+  export let actions: DiffAction[] = [];
+
+  interface DiffAction {
+    label: string;
+    danger?: boolean;
+    run: (selections: HunkSelection[]) => void;
+  }
 
   // Very large diffs are cut to keep the DOM responsive; the rest can be revealed on demand.
   const MAX_LINES = 3000;
@@ -20,7 +31,57 @@
   let copied = '';
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
-  $: if (files) showAll = false;
+  // Checked lines, as `hunk:line` keys (indices into the diff of the first file).
+  let selected = new Set<string>();
+
+  $: if (files) {
+    showAll = false;
+    selected = new Set();
+  }
+  $: selectable = actions.length > 0;
+  $: inline = $diffMode === 'inline' || selectable;
+
+  const lineKey = (hunk: number, line: number): string => `${hunk}:${line}`;
+
+  function changeIndices(hunk: DiffHunk): number[] {
+    const out: number[] = [];
+    hunk.lines.forEach((l, i) => {
+      if (l.kind === 'add' || l.kind === 'del') out.push(i);
+    });
+    return out;
+  }
+
+  function toggleLine(hunk: number, line: number): void {
+    const next = new Set(selected);
+    const k = lineKey(hunk, line);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    selected = next;
+  }
+
+  function hunkFullySelected(hunk: number, h: DiffHunk, current: Set<string>): boolean {
+    const indices = changeIndices(h);
+    return indices.length > 0 && indices.every((i) => current.has(lineKey(hunk, i)));
+  }
+
+  function toggleHunk(hunk: number, h: DiffHunk): void {
+    const all = hunkFullySelected(hunk, h, selected);
+    const next = new Set(selected);
+    for (const i of changeIndices(h)) {
+      if (all) next.delete(lineKey(hunk, i));
+      else next.add(lineKey(hunk, i));
+    }
+    selected = next;
+  }
+
+  function checkedSelections(): HunkSelection[] {
+    const byHunk = new Map<number, number[]>();
+    for (const key of selected) {
+      const [h, l] = key.split(':').map(Number);
+      byHunk.set(h, [...(byHunk.get(h) ?? []), l]);
+    }
+    return [...byHunk.entries()].map(([hunk, lines]) => ({ hunk, lines: lines.sort((a, b) => a - b) }));
+  }
   $: totalLines = files.reduce((n, f) => n + f.hunks.reduce((m, h) => m + h.lines.length, 0), 0);
   $: view = showAll || totalLines <= MAX_LINES ? files : truncate(files, MAX_LINES);
   $: hiddenLines = showAll ? 0 : Math.max(0, totalLines - MAX_LINES);
@@ -116,6 +177,19 @@
         {/each}
       </select>
     </label>
+    {#if selectable}
+      <span class="dv-selected">{selected.size} line{selected.size === 1 ? '' : 's'} selected</span>
+      {#each actions as action}
+        <button
+          class="dv-action"
+          class:danger={action.danger}
+          disabled={selected.size === 0}
+          on:click={() => action.run(checkedSelections())}
+        >
+          {action.label} selected
+        </button>
+      {/each}
+    {/if}
     <span class="dv-spacer"></span>
     <button class="dv-copy" title="Copy the new version of the changed code (without +/-)" on:click={copyCode}>
       Copy {#if copied}<span class="dv-copied">{copied}</span>{/if}
@@ -143,14 +217,50 @@
           {:else if file.hunks.length === 0}
             <div class="dv-note">No content changes (mode or rename only).</div>
           {/if}
-          {#each file.hunks as hunk}
-            <div class="dv-hunk-header">{hunk.header}</div>
-            {#if $diffMode === 'inline'}
+          {#each file.hunks as hunk, hunkIndex}
+            <div class="dv-hunk-header">
+              {#if selectable}
+                <input
+                  type="checkbox"
+                  title="Select all changed lines of this hunk"
+                  checked={hunkFullySelected(hunkIndex, hunk, selected)}
+                  on:change={() => toggleHunk(hunkIndex, hunk)}
+                />
+              {/if}
+              <span class="dv-hunk-text">{hunk.header}</span>
+              {#if selectable}
+                <span class="dv-hunk-actions">
+                  {#each actions as action}
+                    <button
+                      class="dv-action"
+                      class:danger={action.danger}
+                      on:click={() => action.run([{ hunk: hunkIndex }])}
+                    >
+                      {action.label} hunk
+                    </button>
+                  {/each}
+                </span>
+              {/if}
+            </div>
+            {#if inline}
               <table class="dv-table">
-                <colgroup><col class="dv-c-no" /><col class="dv-c-no" /><col /></colgroup>
+                <colgroup>
+                  {#if selectable}<col class="dv-c-sel" />{/if}<col class="dv-c-no" /><col class="dv-c-no" /><col />
+                </colgroup>
                 <tbody>
-                  {#each hunk.lines as line}
+                  {#each hunk.lines as line, lineIndex}
                     <tr class="dv-{line.kind}">
+                      {#if selectable}
+                        <td class="dv-sel">
+                          {#if line.kind === 'add' || line.kind === 'del'}
+                            <input
+                              type="checkbox"
+                              checked={selected.has(lineKey(hunkIndex, lineIndex))}
+                              on:change={() => toggleLine(hunkIndex, lineIndex)}
+                            />
+                          {/if}
+                        </td>
+                      {/if}
                       <td class="dv-no">{line.old_no ?? ''}</td>
                       <td class="dv-no">{line.new_no ?? ''}</td>
                       <td class="dv-code"
@@ -314,7 +424,34 @@
     color: #64748b;
     font-family: var(--font-sans, 'Outfit', sans-serif);
   }
+  .dv-selected {
+    color: #94a3b8;
+  }
+  .dv-action {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 6px;
+    color: #93c5fd;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .dv-action.danger {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+  }
+  .dv-action:hover:not(:disabled) {
+    filter: brightness(1.25);
+  }
+  .dv-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
   .dv-hunk-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 2px 12px;
     background: rgba(59, 130, 246, 0.07);
     color: #60a5fa;
@@ -327,6 +464,24 @@
   }
   .dv-c-no {
     width: 52px;
+  }
+  .dv-c-sel {
+    width: 28px;
+  }
+  .dv-sel {
+    text-align: center;
+    vertical-align: middle;
+    user-select: none;
+  }
+  .dv-hunk-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dv-hunk-actions {
+    display: inline-flex;
+    gap: 6px;
   }
   .dv-no {
     text-align: right;

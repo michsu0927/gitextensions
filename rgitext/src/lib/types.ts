@@ -35,7 +35,7 @@ export interface SelectedWorkingFile {
 /** `'loading'` while a directory listing is being fetched. */
 export type ExpandedDirs = Record<string, DirEntry[] | 'loading'>;
 
-export type TabName = 'dashboard' | 'history' | 'branches' | 'settings';
+export type TabName = 'dashboard' | 'history' | 'commit' | 'branches' | 'settings';
 
 export interface ConsoleLogEntry {
   id: string;
@@ -186,3 +186,35 @@ export interface FileContent {
   size: number;
   text: string;
 }
+
+// ---------------------------------------------------------------------------
+// Commit workflow (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface StashEntry {
+  index: number;
+  name: string;
+  message: string;
+  timestamp: number;
+  hash: string;
+}
+
+/** A hunk of the displayed diff, either completely (`lines` omitted) or selected lines only. */
+export interface HunkSelection {
+  hunk: number;
+  lines?: number[];
+}
+
+export interface CommitOptions {
+  amend: boolean;
+  sign: boolean;
+  resetAuthor: boolean;
+  noVerify: boolean;
+}
+
+export interface DiscardTarget {
+  path: string;
+  untracked: boolean;
+}
+
+export type SelectionAction = 'stage' | 'unstage' | 'discard';

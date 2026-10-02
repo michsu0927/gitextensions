@@ -3,19 +3,20 @@
 
 import { get } from 'svelte/store';
 import { api } from './api';
-import type { DiffOptions, RevisionFilter, TabName } from './types';
+import type { DiffOptions, DiscardTarget, HunkSelection, RevisionFilter, SelectionAction, TabName } from './types';
 
 import { activeTab, customGitPath, gitError, gitVersion, isChecking, isSavingSettings, saveGitPath, settingsError, settingsMessage, tempGitPath } from '../stores/app';
 import { currentRepoPath, gitStatus, isEditingPath, isLoadingStatus, pathError, statusError, tempRepoPath } from '../stores/repo';
 import {
-  commitDetails, commitDiff, commitFiles, commitFilesError, commitsError, DEFAULT_FILTER, graphState,
+  commitDetails, commitDiff, commitFiles, commitFilesError, commitsError, DEFAULT_FILTER, diffOptions, graphState,
   hasMoreRevisions, isLoadingCommitDetails, isLoadingCommitFileDiff, isLoadingCommitFiles, isLoadingCommits,
   isLoadingMoreCommits, revisionFilter, revisionRows, selectedCommitFile, selectedHash,
 } from '../stores/history';
 import {
-  commitFeedback, commitFeedbackError, commitMessage, expandedDirs, isCommitting, isLoadingWorkingFileDiff,
-  isLoadingWorkingFiles, selectedStagedPaths, selectedUnstagedPaths, selectedWorkingFile,
-  selectedWorkingFileDiff, workingFiles, workingFilesError,
+  amendCommit, commitFeedback, commitFeedbackError, commitMessage, expandedDirs, isCommitting,
+  isLoadingStashEntries, isLoadingWorkingFileDiff, isLoadingWorkingFiles, selectedStagedPaths,
+  selectedUnstagedPaths, selectedWorkingFile, selectedWorkingFileDiff, signCommit, stashEntries,
+  stashIncludeUntracked, stashMessage, workingFiles, workingFilesError,
 } from '../stores/workdir';
 import {
   branchActionError, branches, branchesError, branchMessage, isExecutingBranchAction, isLoadingBranches,
@@ -413,11 +414,13 @@ export const handleUnstageSelected = (): Promise<void> => changeStaging(get(sele
 
 export async function handleCommit(): Promise<void> {
   const message = get(commitMessage);
+  const amend = get(amendCommit);
   if (!message.trim()) {
     commitFeedbackError.set('Please enter a commit message');
     return;
   }
-  if (get(workingFiles).every((f) => !f.is_staged)) {
+  // Amending may only change the message, everything else needs something staged.
+  if (!amend && get(workingFiles).every((f) => !f.is_staged)) {
     commitFeedbackError.set('No staged files to commit. Stage some files first!');
     return;
   }
@@ -425,9 +428,10 @@ export async function handleCommit(): Promise<void> {
   commitFeedback.set('');
   commitFeedbackError.set('');
   try {
-    const response = await api.commitChanges(repo(), message);
-    commitFeedback.set(`Committed successfully!\n${response}`);
+    const response = await api.commitChanges(repo(), message, { amend, sign: get(signCommit) });
+    commitFeedback.set(`${amend ? 'Amended' : 'Committed'} successfully!\n${response}`);
     commitMessage.set('');
+    amendCommit.set(false);
     await loadWorkingFiles();
     await loadGitStatus();
     await loadBranches();
@@ -438,6 +442,118 @@ export async function handleCommit(): Promise<void> {
     isCommitting.set(false);
   }
 }
+
+/** Reloads everything that changes when files are staged, unstaged or discarded. */
+async function refreshWorkingState(): Promise<void> {
+  await loadWorkingFiles();
+  // The selected file may still be there with different content (e.g. after staging one hunk).
+  const selected = get(selectedWorkingFile);
+  if (selected) onSelectedWorkingFileChanged(selected, get(diffOptions));
+  await loadGitStatus();
+}
+
+export async function stageAll(): Promise<void> {
+  await runWorkdirAction(() => api.stageAll(repo()), 'Failed to stage files');
+}
+
+export async function unstageAll(): Promise<void> {
+  await runWorkdirAction(() => api.unstageAll(repo()), 'Failed to unstage files');
+}
+
+export async function discardFiles(targets: DiscardTarget[]): Promise<void> {
+  if (targets.length === 0) return;
+  await runWorkdirAction(() => api.discardChanges(repo(), targets), 'Failed to discard changes');
+}
+
+async function runWorkdirAction(run: () => Promise<unknown>, failure: string): Promise<void> {
+  commitFeedback.set('');
+  commitFeedbackError.set('');
+  try {
+    await run();
+  } catch (e) {
+    commitFeedbackError.set(`${failure}: ${errorText(e)}`);
+  }
+  await refreshWorkingState();
+}
+
+/** Stages, unstages or discards selected hunks/lines of the file shown in the diff. */
+export async function applySelection(
+  action: SelectionAction,
+  file: { path: string; untracked: boolean },
+  selections: HunkSelection[],
+): Promise<void> {
+  if (selections.length === 0) return;
+  await runWorkdirAction(
+    () => api.applySelection(repo(), file.path, action, selections, file.untracked, get(diffOptions)),
+    `Failed to ${action} the selection`,
+  );
+}
+
+/** Turns "amend" on/off; turning it on pre-fills the message of the last commit. */
+export async function setAmend(on: boolean): Promise<void> {
+  amendCommit.set(on);
+  if (on && !get(commitMessage).trim()) {
+    try {
+      commitMessage.set(await api.getLastCommitMessage(repo()));
+    } catch (e) {
+      console.warn('Could not read the last commit message:', e);
+    }
+  }
+}
+
+/** Pre-fills the message from `commit.template` when the message box is empty. */
+export async function applyCommitTemplate(): Promise<void> {
+  if (get(commitMessage).trim()) return;
+  try {
+    const template = await api.getCommitTemplate(repo());
+    if (template && !get(commitMessage).trim()) commitMessage.set(template);
+  } catch (e) {
+    console.warn('Could not read the commit template:', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stashes
+// ---------------------------------------------------------------------------
+
+export async function loadStashEntries(): Promise<void> {
+  isLoadingStashEntries.set(true);
+  try {
+    stashEntries.set(await api.listStashes(repo()));
+  } catch (e) {
+    stashEntries.set([]);
+    console.error('Failed to list stashes:', e);
+  } finally {
+    isLoadingStashEntries.set(false);
+  }
+}
+
+async function runStashAction(run: () => Promise<string>, failure: string): Promise<void> {
+  commitFeedback.set('');
+  commitFeedbackError.set('');
+  try {
+    commitFeedback.set(await run());
+  } catch (e) {
+    commitFeedbackError.set(`${failure}: ${errorText(e)}`);
+  }
+  await Promise.all([refreshWorkingState(), loadStashEntries(), loadStashes()]);
+}
+
+export async function saveStash(): Promise<void> {
+  const message = get(stashMessage).trim();
+  await runStashAction(
+    () => api.stashSave(repo(), message || null, get(stashIncludeUntracked), false),
+    'Failed to stash',
+  );
+  stashMessage.set('');
+}
+
+export const applyStashEntry = (index: number): Promise<void> =>
+  runStashAction(() => api.applyStash(repo(), index), 'Failed to apply the stash');
+export const popStashEntry = (index: number): Promise<void> =>
+  runStashAction(() => api.popStash(repo(), index), 'Failed to pop the stash');
+export const dropStashEntry = (index: number): Promise<void> =>
+  runStashAction(() => api.dropStash(repo(), index), 'Failed to drop the stash');
 
 // ---------------------------------------------------------------------------
 // Branches, tags, stashes, remotes (loaders)
@@ -524,6 +640,7 @@ export function refreshAll(): void {
   void loadRemotes();
   void loadRemoteBranches();
   void loadWorkingFiles();
+  void loadStashEntries();
   reloadHistoryIfActive();
 }
 
@@ -533,11 +650,15 @@ export function selectTab(tab: TabName): void {
     void loadCommits();
   } else if (tab === 'dashboard') {
     void loadGitStatus();
+  } else if (tab === 'commit') {
+    void loadWorkingFiles();
+    void loadGitStatus();
+    void loadStashEntries();
+    void applyCommitTemplate();
   } else if (tab === 'branches') {
     clearBranchFeedback();
     void loadBranches();
     void loadRemoteBranches();
-    void loadWorkingFiles();
   }
 }
 
@@ -767,4 +888,5 @@ export async function initialize(): Promise<void> {
   void loadRemotes();
   void loadRemoteBranches();
   void loadWorkingFiles();
+  void loadStashEntries();
 }

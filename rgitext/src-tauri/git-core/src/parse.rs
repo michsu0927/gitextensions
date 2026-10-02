@@ -2,7 +2,7 @@
 //! (`-z`, explicit separators) so that file names and subjects containing
 //! spaces, quotes or unusual characters cannot break parsing.
 
-use crate::models::{CommitFile, StatusEntry};
+use crate::models::{CommitFile, StashEntry, StatusEntry};
 
 fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
@@ -84,6 +84,32 @@ pub fn parse_name_status_z(data: &[u8]) -> Vec<CommitFile> {
     files
 }
 
+/// Format for `git stash list -z` matching [`parse_stash_list`].
+pub const STASH_LIST_FORMAT: &str = "--format=%gd%x1f%gs%x1f%ct%x1f%H";
+
+/// Parses `git stash list -z STASH_LIST_FORMAT`.
+pub fn parse_stash_list(data: &[u8]) -> Vec<StashEntry> {
+    data.split(|b| *b == 0)
+        .filter(|r| !r.is_empty())
+        .filter_map(|record| {
+            let record = lossy(record);
+            let f: Vec<&str> = record.trim_matches('\n').split('\x1f').collect();
+            if f.len() < 4 {
+                return None;
+            }
+            let name = f[0].to_string();
+            let index = name.strip_prefix("stash@{")?.strip_suffix('}')?.parse().ok()?;
+            Some(StashEntry {
+                index,
+                name,
+                message: f[1].to_string(),
+                timestamp: f[2].parse().unwrap_or(0),
+                hash: f[3].to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Non-empty trimmed lines.
 pub fn lines(text: &str) -> Vec<String> {
     text.lines()
@@ -129,6 +155,16 @@ mod tests {
         assert_eq!(files[1].path, "new.txt");
         assert_eq!(files[1].old_path.as_deref(), Some("old.txt"));
         assert_eq!(files[2].status, "A");
+    }
+
+    #[test]
+    fn stash_list() {
+        let data = "stash@{0}\x1fWIP on main: abc subject\x1f1700000000\x1fdeadbeef\0stash@{1}\x1fOn dev: named | with \u{2502}\x1f1600000000\x1fcafebabe\0".as_bytes();
+        let stashes = parse_stash_list(data);
+        assert_eq!(stashes.len(), 2);
+        assert_eq!((stashes[0].index, stashes[0].hash.as_str()), (0, "deadbeef"));
+        assert_eq!(stashes[1].message, "On dev: named | with \u{2502}");
+        assert_eq!(stashes[1].timestamp, 1_600_000_000);
     }
 
     #[test]

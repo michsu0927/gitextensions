@@ -40,3 +40,14 @@ pub struct StatusEntry {
     pub path: String,
     pub orig_path: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StashEntry {
+    pub index: usize,
+    /// `stash@{n}`
+    pub name: String,
+    pub message: String,
+    pub timestamp: u64,
+    /// Hash of the stash commit (usable with the commit diff commands).
+    pub hash: String,
+}

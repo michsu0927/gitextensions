@@ -37,6 +37,30 @@ export function getRawGitCommand(cmd: string, args: Args): string[] {
       return ['git branch --format="%(refname:short)"'];
     case 'get_git_tags':
       return ['git tag'];
+    case 'list_stashes':
+      return ['git stash list -z'];
+    case 'stash_save':
+      return ['git stash push' + (args.includeUntracked ? ' --include-untracked' : '') + (args.keepIndex ? ' --keep-index' : '')];
+    case 'stash_pop':
+      return ['git stash pop stash@{' + String(args.stashIndex) + '}'];
+    case 'stash_drop':
+      return ['git stash drop stash@{' + String(args.stashIndex) + '}'];
+    case 'stage_all':
+      return ['git add -A'];
+    case 'unstage_all':
+      return ['git reset -q'];
+    case 'discard_changes':
+      return ['git checkout -- <files>', 'git clean -f -d -- <untracked files>'];
+    case 'apply_selection':
+      return [
+        'git apply --recount ' +
+          (args.action === 'stage' ? '--cached' : args.action === 'unstage' ? '--cached --reverse' : '--reverse') +
+          ' - (partial patch)',
+      ];
+    case 'get_commit_template':
+      return ['git config --get commit.template'];
+    case 'get_last_commit_message':
+      return ['git log -1 --format=%B'];
     case 'get_git_stashes':
       return ['git stash list'];
     case 'get_git_remotes':

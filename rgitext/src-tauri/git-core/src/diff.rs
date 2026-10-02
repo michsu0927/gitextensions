@@ -18,6 +18,8 @@ pub struct DiffLine {
     pub old_no: Option<u32>,
     pub new_no: Option<u32>,
     pub text: String,
+    /// The line ended with CRLF in the patch (the carriage return is not part of `text`).
+    pub cr: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -49,6 +51,8 @@ pub struct DiffFile {
     pub additions: u32,
     pub deletions: u32,
     pub hunks: Vec<Hunk>,
+    /// Everything before the first hunk (`diff --git` .. `+++`), verbatim, for rebuilding patches.
+    pub raw_header: String,
 }
 
 impl DiffFile {
@@ -146,6 +150,7 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
     }
 
     for raw in text.split('\n') {
+        let cr = raw.ends_with('\r');
         let line = raw.strip_suffix('\r').unwrap_or(raw);
         // Inside a hunk the first character decides; a `diff --git` line always starts a new file.
         if let Some(rest) = line.strip_prefix("diff --git ") {
@@ -162,6 +167,7 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
                 additions: 0,
                 deletions: 0,
                 hunks: Vec::new(),
+                raw_header: format!("{}\n", raw),
             });
             continue;
         }
@@ -180,7 +186,7 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
             let complete = seen_old >= h.old_lines && seen_new >= h.new_lines;
             match kind {
                 Some(LineKind::NoEol) => {
-                    h.lines.push(DiffLine { kind: LineKind::NoEol, old_no: None, new_no: None, text: text.to_string() });
+                    h.lines.push(DiffLine { kind: LineKind::NoEol, old_no: None, new_no: None, text: text.to_string(), cr: false });
                     continue;
                 }
                 Some(k) if !complete => {
@@ -189,20 +195,20 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
                             file.additions += 1;
                             new_no += 1;
                             seen_new += 1;
-                            DiffLine { kind: k, old_no: None, new_no: Some(new_no), text: text.to_string() }
+                            DiffLine { kind: k, old_no: None, new_no: Some(new_no), text: text.to_string(), cr }
                         }
                         LineKind::Del => {
                             file.deletions += 1;
                             old_no += 1;
                             seen_old += 1;
-                            DiffLine { kind: k, old_no: Some(old_no), new_no: None, text: text.to_string() }
+                            DiffLine { kind: k, old_no: Some(old_no), new_no: None, text: text.to_string(), cr }
                         }
                         _ => {
                             old_no += 1;
                             new_no += 1;
                             seen_old += 1;
                             seen_new += 1;
-                            DiffLine { kind: k, old_no: Some(old_no), new_no: Some(new_no), text: text.to_string() }
+                            DiffLine { kind: k, old_no: Some(old_no), new_no: Some(new_no), text: text.to_string(), cr }
                         }
                     };
                     h.lines.push(line);
@@ -213,7 +219,7 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
                     new_no += 1;
                     seen_old += 1;
                     seen_new += 1;
-                    h.lines.push(DiffLine { kind: LineKind::Context, old_no: Some(old_no), new_no: Some(new_no), text: String::new() });
+                    h.lines.push(DiffLine { kind: LineKind::Context, old_no: Some(old_no), new_no: Some(new_no), text: String::new(), cr });
                     continue;
                 }
                 _ => {}
@@ -223,6 +229,10 @@ pub fn parse_diff(text: &str) -> Vec<DiffFile> {
         }
 
         let file = current.as_mut().expect("file exists");
+        if !line.starts_with("@@ ") && file.hunks.is_empty() && !line.is_empty() {
+            file.raw_header.push_str(raw);
+            file.raw_header.push('\n');
+        }
         if line.starts_with("@@ ") {
             if let Some((os, ol, ns, nl)) = parse_hunk_header(line) {
                 // Counters hold the last consumed line number. For an empty range git reports the

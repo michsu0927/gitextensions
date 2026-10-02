@@ -8,6 +8,7 @@
   import DashboardTab from './components/DashboardTab.svelte';
   import CommitHistoryTab from './components/CommitHistoryTab.svelte';
   import BranchesTab from './components/BranchesTab.svelte';
+  import CommitTab from './components/CommitTab.svelte';
   import SettingsTab from './components/SettingsTab.svelte';
   import ConsoleLogDrawer from './components/ConsoleLogDrawer.svelte';
 
@@ -23,11 +24,7 @@
     currentRepoPath, gitStatus, isEditingPath, isLoadingStatus, pathError, statusError, tempRepoPath,
   } from './stores/repo';
   import { diffOptions, isLoadingCommits, selectedCommitFile, selectedHash } from './stores/history';
-  import {
-    commitFeedback, commitFeedbackError, commitMessage, expandedDirs, isCommitting, isLoadingWorkingFileDiff,
-    isLoadingWorkingFiles, selectedStagedPaths, selectedUnstagedPaths, selectedWorkingFile,
-    selectedWorkingFileDiff, workingFiles, workingFilesError,
-  } from './stores/workdir';
+  import { selectedWorkingFile } from './stores/workdir';
   import {
     branchActionError, branches, branchesError, branchMessage, branchSearchQuery, isBranchesCollapsed,
     isExecutingBranchAction, isLoadingBranches, isLoadingRemoteBranches, isLoadingRemotes, isLoadingStashes,
@@ -140,6 +137,8 @@
         />
       {:else if $activeTab === 'history'}
         <CommitHistoryTab />
+      {:else if $activeTab === 'commit'}
+        <CommitTab />
       {:else if $activeTab === 'branches'}
         <BranchesTab
           branches={$branches}
@@ -150,19 +149,6 @@
           bind:branchActionError={$branchActionError}
           isExecutingBranchAction={$isExecutingBranchAction}
           gitStatus={$gitStatus}
-          workingFiles={$workingFiles}
-          isLoadingWorkingFiles={$isLoadingWorkingFiles}
-          workingFilesError={$workingFilesError}
-          bind:selectedWorkingFile={$selectedWorkingFile}
-          bind:selectedWorkingFileDiff={$selectedWorkingFileDiff}
-          isLoadingWorkingFileDiff={$isLoadingWorkingFileDiff}
-          bind:expandedDirs={$expandedDirs}
-          bind:selectedUnstagedPaths={$selectedUnstagedPaths}
-          bind:selectedStagedPaths={$selectedStagedPaths}
-          bind:commitMessage={$commitMessage}
-          isCommitting={$isCommitting}
-          bind:commitFeedback={$commitFeedback}
-          bind:commitFeedbackError={$commitFeedbackError}
           performCheckout={actions.performCheckout}
           performMerge={actions.performMerge}
           performRebase={actions.performRebase}
@@ -171,11 +157,6 @@
           performDeleteBranch={actions.performDeleteBranch}
           performPull={actions.performPull}
           performPush={actions.performPush}
-          toggleDir={actions.toggleDir}
-          handleStageSelected={actions.handleStageSelected}
-          handleUnstageSelected={actions.handleUnstageSelected}
-          handleCommit={actions.handleCommit}
-          loadWorkingFiles={actions.loadWorkingFiles}
         />
       {:else if $activeTab === 'settings'}
         <SettingsTab
