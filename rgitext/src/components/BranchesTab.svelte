@@ -6,10 +6,12 @@
   export let branchMessage = '';
   export let branchActionError = '';
   export let isExecutingBranchAction = false;
+  /** @type {import("../lib/types").GitStatus | null} */
   export let gitStatus = null;
   export let workingFiles = [];
   export let isLoadingWorkingFiles = false;
   export let workingFilesError = '';
+  /** @type {import("../lib/types").SelectedWorkingFile | null} */
   export let selectedWorkingFile = null; // { path: string, is_staged: boolean }
   export let selectedWorkingFileDiff = '';
   export let isLoadingWorkingFileDiff = false;

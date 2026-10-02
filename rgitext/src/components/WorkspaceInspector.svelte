@@ -12,6 +12,7 @@
   export let remotes = [];
   export let isLoadingRemotes = false;
   export let remotesError = '';
+  /** @type {import("../lib/types").GitStatus | null} */
   export let gitStatus = null;
   export let isExecutingBranchAction = false;
   export let sidebarBranchMessage = '';
@@ -21,6 +22,7 @@
   export let branchSearchQuery = '';
   export let selectedSidebarBranch = '';
   export let selectedSidebarTag = '';
+  /** @type {unknown} */
   export let selectedSidebarStash = null;
 
   // collapsible sections

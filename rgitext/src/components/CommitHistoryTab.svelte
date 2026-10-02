@@ -2,6 +2,7 @@
   export let commits = [];
   export let isLoadingCommits = false;
   export let commitsError = '';
+  /** @type {import("../lib/types").CommitItem | null} */
   export let selectedCommit = null;
   export let commitFiles = [];
   export let isLoadingCommitFiles = false;
